@@ -1,0 +1,32 @@
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Go build and test artifacts
+/bin/
+/build/
+/dist/
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Local configuration and runtime files
+.env
+.env.*
+!.env.example
+*.log
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Editor and OS temporary files
+.idea/
+*.swp
+*.swo
+*~
+
+# Local build binaries
+/.bin/

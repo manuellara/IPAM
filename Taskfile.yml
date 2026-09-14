@@ -1,0 +1,41 @@
+version: '3'
+
+vars:
+  BIN_DIR: '.bin'
+  MIGRATE_BIN: '{{.BIN_DIR}}/migrate'
+
+tasks:
+
+  setup-migrate:
+    internal: true
+    desc: Installs golang-migrate strictly inside this project directory
+    status:
+      - test -f {{.MIGRATE_BIN}}
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      # GOBIN isolates the binary destination, ensuring your system remains untouched
+      - GOBIN={{.USER_WORKING_DIR}}/{{.BIN_DIR}} CGO_ENABLED=1 go install -tags 'sqlite3' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+
+  migrate-create:
+    desc: Create database migration with SQL extension and sequence naming convention
+    cmds:
+      - migrate create -ext sql -dir ./migrations -seq {{.NAME}}
+    requires:
+      vars: [NAME]
+
+  migrate-up:
+    desc: Run database migrations up
+    deps: [setup-migrate]
+    cmds:
+      - "{{.MIGRATE_BIN}} -database 'sqlite3://ipam.db' -path ./migrations up"
+
+  migrate-down:
+    desc: Rollback database migrations
+    deps: [setup-migrate]
+    cmds:
+      - "{{.MIGRATE_BIN}} -database 'sqlite3://ipam.db' -path ./migrations down"
+
+  sqlc-generate:
+    desc: Generate Go code from SQL queries using sqlc
+    cmds:
+      - sqlc generate

@@ -1,0 +1,123 @@
+# IPAM OSS — Copilot Instructions
+
+Self-hosted, open source IP address management tool. Replaces per-subnet Excel
+sheets with a request/approval workflow, automatic IP allocation, and a
+standardized server naming convention.
+
+## Stack
+
+- **Language:** Go
+- **DB:** SQLite via `mattn/go-sqlite3` (CGO enabled) — this is the ONLY
+  SQLite driver in the project. Never suggest `modernc.org/sqlite` or mixing
+  drivers; sessions (`sqlite3store`) require the CGo driver, and the whole
+  app must share one driver against one file.
+- **DB connection settings (not optional):** on every connection, set
+  `PRAGMA foreign_keys = ON`, `PRAGMA journal_mode = WAL`, and
+  `PRAGMA busy_timeout = 5000` (or similar). Cap `db.SetMaxOpenConns()` to a
+  modest number (5-10) — SQLite only supports one writer at a time
+  regardless of pool size, so a large pool doesn't help and can increase
+  lock contention. There is no traditional network-style "connection
+  pooling" need here (no auth handshake, no TCP round trip) — `sql.DB`'s
+  pool exists only to bound concurrent SQLite connections sanely, not to
+  amortize connection setup cost.
+- **Queries:** sqlc-generated. Hand-written query files live in
+  `internal/db/queries/`, split by domain (`users.sql`, `subnets.sql`,
+  `requests.sql`, `naming.sql`, etc.) — sqlc compiles all of them into one
+  generated package regardless of the split. Generated code (models,
+  `Querier` interface, per-query functions) lands in `internal/db/` (package
+  `db`) — **never hand-edit generated `.go` files there; edit the `.sql`
+  query and run `sqlc generate`.** Schema source of truth is the
+  `migrations/` directory itself (sqlc reads it directly), not a separate
+  hand-maintained schema file.
+- **Migrations:** golang-migrate, embedded via `go:embed`, run automatically
+  on startup. See `.github/instructions/migrations.instructions.md`.
+- **Web:** `net/http` (stdlib router), `templ` for server-rendered HTML,
+  `htmx` for interactivity, Alpine.js only where htmx genuinely can't reach.
+- **Sessions:** `alexedwards/scs` + `sqlite3store`.
+- **Auth:** three concurrent, independently-configurable sources — see below.
+- **Container:** CGO_ENABLED=1 build stage, `distroless/base-debian12`
+  runtime (not `distroless/static` — CGo binaries need glibc).
+- **Backups:** Litestream, replicating the SQLite file to S3 (dev) or a NAS
+  path (prod), run as `litestream replicate -exec` wrapping the app binary.
+
+## Authentication (three sources, always concurrent)
+
+1. **Local admin** — fixed username `administrator`, password from
+   `ADMIN_PASSWORD` env var, argon2id (`alexedwards/argon2id`). On every
+   boot: if the stored hash doesn't match `ADMIN_PASSWORD`, re-hash and
+   overwrite (env var always wins on restart — this is deliberate). Every
+   login (success or failure) is audit-logged. This account always exists;
+   it's a break-glass path, not the primary login.
+2. **OIDC** — `coreos/go-oidc` + `golang.org/x/oauth2`. Only shown on the
+   login page if issuer/client env vars are set.
+3. **LDAP/AD** — direct use of `go-ldap/ldap` (NOT a wrapper package like
+   `go-ad-auth`). TLS or StartTLS is mandatory and enforced by config
+   validation at startup — never allow a plaintext bind configuration to
+   start the app.
+
+OIDC and LDAP auto-provision a `users` row on first successful login with
+**no roles assigned**. An existing admin must explicitly grant roles before
+that user can access anything role-gated.
+
+## RBAC
+
+Roles: `admin`, `approver`, `requester`, `viewer`. A user can hold multiple
+roles, and **roles are additive, not hierarchical** — `admin` does not
+implicitly grant `approver` or `requester` access. Role checks happen in
+per-route middleware, never scattered through template logic. Some routes
+also need an ownership check beyond the role gate (e.g. `requester` can only
+edit their own pending requests) — that's a second check in the handler,
+not part of the role middleware.
+
+Permission summary: `requester` submits/manages their own requests only;
+`approver` acts on the provisioning and decommission queues (not scoped to
+"own"); `admin` manages subnets, naming schemes, mappings, users, and audit
+log; `viewer` gets read-only visibility into all requests/subnets/audit log.
+See `docs/routes.md` for the exact required role per route.
+
+## Route classification
+
+Every handler is one of:
+- **PAGE** — full HTML document, GET, browser navigation
+- **FRAGMENT** — htmx-triggered partial swap, no full navigation (used for
+  fast in-place actions: approve/deny, cancel, role toggle)
+- **ACTION** — POST that mutates and redirects (classic POST/redirect/GET;
+  used for multi-field forms where a full re-render with validation errors
+  makes more sense than a fragment swap)
+
+See `docs/routes.md` for the full route table.
+
+## Core workflow (the thing this app actually does)
+
+1. Requester picks a naming scheme, site, env, app, role. **No subnet or IP
+   picker is ever shown** — site+env resolves to a subnet via
+   `site_env_subnet_map`, and the IP is auto-assigned at approval time.
+2. Approver approves or denies. Approval is one DB transaction: allocate
+   next free IP in the mapped subnet (skip reserved + already-allocated),
+   lock and increment the naming sequence for the exact
+   site+env+app+role prefix, generate the hostname, write `ip_allocations`,
+   update the request, write `audit_log`. All or nothing.
+3. Decommissioning is a **separate** approval flow
+   (`decommission_requests`), not a request status. On approval, the IP's
+   `ip_allocations` row gets `released_at` set (IP becomes reusable) but
+   **the hostname and its sequence number are never reused**.
+
+## Naming convention
+
+Fixed-length, no separators: `{site}{env}{app}{role}{seq}`, each token
+exactly 3 characters, total 15 characters (matches the Windows NetBIOS
+limit). Sequence is per exact prefix (site+env+app+role combo): `000`-`999`
+numeric, then `A00`-`Z99` letter rollover. Hard-block (fail the approval,
+require manual intervention) if a prefix would exceed `Z99` — never
+silently wrap around.
+
+## Things Copilot should NOT suggest
+
+- Don't suggest `modernc.org/sqlite`, `bcrypt`, or reintroducing a subnet/IP
+  picker on the request form — all deliberately decided against.
+- Don't suggest reusing a decommissioned hostname or its sequence number.
+- Don't suggest storing sessions anywhere but the `sessions` table via
+  `sqlite3store`.
+- Don't add IPv6-specific allocation logic (delegation/`/64` handling) — out
+  of scope for v1 by design, though CIDR storage/math (`net/netip`) is
+  already dual-stack-safe.
