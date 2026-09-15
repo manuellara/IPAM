@@ -99,7 +99,21 @@ role, and **None** means no auth required.
 
 | Type | Method | Path | Required Role | Description |
 |---|---|---|---|---|
-| ACTION | GET | `/healthz` | None | Reports DB/migration readiness for container orchestration |
+| ACTION | GET | `/healthz` | None | Live DB ping. Structurally isolated from all per-route middleware (no session, no CSRF, no RBAC) — registered directly on the top-level `mux`, not inside any `middleware.MiddlewareStack` group. Only `RecoverMiddleware` (global panic recovery) applies to it, same as every other route. |
+
+## Middleware Architecture
+
+- Per-route-group middleware (session load/save, CSRF, logging) is
+  assembled via `middleware.MiddlewareStack` and applied to specific route
+  groups (e.g. `publicMiddleware`) — **not** wrapped globally at
+  `http.ListenAndServe`.
+- The **only** globally-wrapped middleware is `RecoverMiddleware` (panic
+  recovery) — it must apply to every route, including `/healthz`, which
+  otherwise has no middleware at all.
+- `/healthz` is registered directly on the top-level `mux` with no stack —
+  this is a deliberate structural isolation, not a conditional skip, so it
+  can't accidentally regain session/CSRF/RBAC if those stacks change
+  elsewhere.
 
 ## Key Workflow Notes
 

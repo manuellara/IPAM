@@ -12,6 +12,7 @@ import (
 	"github.com/manuellara/ipam/internal/logging"
 	"github.com/manuellara/ipam/internal/middleware"
 	"github.com/manuellara/ipam/internal/session"
+	"github.com/manuellara/ipam/internal/web"
 )
 
 func main() {
@@ -35,6 +36,7 @@ func main() {
 	// Initialize middleware stacks
 	publicMiddleware := middleware.MiddlewareStack(
 		// Middleware execution order: top to bottom
+		sessionManager.LoadAndSave,
 		middleware.LoggingMiddleware,
 		middleware.CsrfMiddleware,
 	)
@@ -49,11 +51,14 @@ func main() {
 	fs := http.FileServer(http.Dir("./static"))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
+	// Health check endpoint (no session, no CSRF, no RBAC)
+	mux.Handle("/healthz", web.HealthHandler(databaseService))
+
 	// Register routes with their respective handlers and middleware
 	loginController.RegisterLoginRoutes(mux, publicMiddleware, nil)
 
 	// Run the HTTP server with session management
-	if err := http.ListenAndServe(":8080", sessionManager.LoadAndSave(mux)); err != nil {
+	if err := http.ListenAndServe(":8080", middleware.RecoverMiddleware(mux)); err != nil {
 		slog.Error(fmt.Sprintf("HTTP server stopped: %v", err))
 
 		os.Exit(1)

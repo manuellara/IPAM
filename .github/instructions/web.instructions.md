@@ -21,7 +21,14 @@ code don't drift.
     multi-field forms.
 - CSRF: all state-changing routes go through `net/http.CrossOriginProtection`.
   Don't add a separate token-based CSRF middleware — it's redundant with
-  this and not the chosen approach.
+  this and not the chosen approach. It only checks unsafe methods
+  (POST/PATCH/DELETE) — GET routes, including the OIDC callback, are never
+  checked, so no bypass pattern is needed there by default (see repo-wide
+  instructions for the `form_post` exception).
+- Middleware is assembled per-route-group via `middleware.MiddlewareStack`,
+  not wrapped globally — see the repo-wide "Middleware architecture"
+  section. `/healthz` specifically has no stack at all; don't add session,
+  CSRF, or logging middleware to it even as a "just in case."
 - Request submission forms never include a subnet or IP picker. If you're
   writing a form that touches `requests`, the only user-facing fields are:
   naming scheme, site, env, app, role. Subnet and IP are resolved

@@ -11,9 +11,15 @@ standardized server naming convention.
   SQLite driver in the project. Never suggest `modernc.org/sqlite` or mixing
   drivers; sessions (`sqlite3store`) require the CGo driver, and the whole
   app must share one driver against one file.
-- **DB connection settings (not optional):** on every connection, set
-  `PRAGMA foreign_keys = ON`, `PRAGMA journal_mode = WAL`, and
-  `PRAGMA busy_timeout = 5000` (or similar). Cap `db.SetMaxOpenConns()` to a
+- **DB connection settings (not optional):** set via **DSN query parameters**,
+  not a manual `PRAGMA` exec — `db.ExecContext(ctx, "PRAGMA foreign_keys = ON")`
+  only applies to whichever single pooled connection happens to run it; when
+  `sql.DB`'s pool later opens a fresh connection, that connection silently
+  reverts to the default. The correct approach: open with
+  `?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000` in the DSN —
+  `mattn/go-sqlite3` applies these to every connection it opens. Don't add a
+  redundant manual `PRAGMA` call alongside the DSN params; it's dead weight
+  that implies the wrong mental model. Also cap `db.SetMaxOpenConns()` to a
   modest number (5-10) — SQLite only supports one writer at a time
   regardless of pool size, so a large pool doesn't help and can increase
   lock contention. There is no traditional network-style "connection
@@ -87,6 +93,25 @@ Every handler is one of:
 
 See `docs/routes.md` for the full route table.
 
+## Middleware architecture
+
+Per-route-group middleware (session load/save via `scs`, CSRF via
+`CrossOriginProtection`, request logging) is assembled with
+`middleware.MiddlewareStack(...)` and applied to specific route groups
+(e.g. `publicMiddleware`) at route registration — **never wrapped globally
+at `http.ListenAndServe`**. The only middleware wrapped globally is
+`RecoverMiddleware` (panic recovery), because it must apply to every route
+including `/healthz`.
+
+`/healthz` is registered directly on the top-level `mux` with **no**
+middleware stack — no session, no CSRF, no RBAC. This is a deliberate
+structural isolation (a route with genuinely no stack), not a conditional
+skip inside a shared middleware — don't "simplify" this by wrapping
+`/healthz` in the same stack as everything else with an early-return
+exception; that reintroduces the DB/session overhead on every orchestrator
+poll (which hits this endpoint every few seconds) that this design
+avoids.
+
 ## Core workflow (the thing this app actually does)
 
 1. Requester picks a naming scheme, site, env, app, role. **No subnet or IP
@@ -121,3 +146,13 @@ silently wrap around.
 - Don't add IPv6-specific allocation logic (delegation/`/64` handling) — out
   of scope for v1 by design, though CIDR storage/math (`net/netip`) is
   already dual-stack-safe.
+- Don't suggest `db.ExecContext(ctx, "PRAGMA ...")` for foreign keys/WAL/busy
+  timeout — these must be DSN query parameters (see "DB connection
+  settings" above), not a post-open exec, or the pool silently loses the
+  setting on new connections.
+- Don't add a `CrossOriginProtection` bypass for the OIDC callback route
+  speculatively — it's only needed if `response_mode=form_post` is
+  explicitly configured. A standard GET redirect callback is never checked
+  by CSRF protection in the first place (it only checks POST/PATCH/DELETE).
+- Don't wrap `/healthz` in the same middleware stack as authenticated
+  routes, even conditionally — see "Middleware architecture" above.

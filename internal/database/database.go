@@ -10,7 +10,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	migratesqlite3 "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/manuellara/ipam/migrations"
 )
@@ -51,6 +50,11 @@ func (s *DBService) DB() *sql.DB {
 	return s.db
 }
 
+// Ping checks the database connection by pinging it with the provided context.
+func (s *DBService) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
+}
+
 // Close releases the database connection.
 func (s *DBService) Close() error {
 	if s == nil || s.db == nil {
@@ -59,13 +63,9 @@ func (s *DBService) Close() error {
 	return s.db.Close()
 }
 
-// initialize sets up the database by enabling foreign keys, pinging the database,
+// initialize sets up the database by pinging the database,
 // and applying any pending migrations. It returns an error if any of these steps fail.
 func (s *DBService) initialize(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-		return fmt.Errorf("enable foreign keys: %w", err)
-	}
-
 	if err := s.db.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping database: %w", err)
 	}
