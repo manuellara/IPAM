@@ -1,4 +1,21 @@
 ----------------------------------------------------------------------
+-- DROP: API KEYS
+----------------------------------------------------------------------
+DROP TABLE IF EXISTS api_keys;
+
+----------------------------------------------------------------------
+-- DROP: MAINTENANCE WINDOWS
+----------------------------------------------------------------------
+DROP TABLE IF EXISTS maintenance_window_servers;
+DROP TABLE IF EXISTS maintenance_windows;
+
+----------------------------------------------------------------------
+-- DROP: AUTH PROVIDER CONFIG (OIDC, LDAP)
+----------------------------------------------------------------------
+DROP TABLE IF EXISTS ldap_config;
+DROP TABLE IF EXISTS oidc_config;
+
+----------------------------------------------------------------------
 -- DROP: AUDIT LOG
 ----------------------------------------------------------------------
 DROP INDEX IF EXISTS audit_log_created_idx;
@@ -18,6 +35,11 @@ DROP INDEX IF EXISTS ip_allocations_request_idx;
 DROP INDEX IF EXISTS ip_allocations_subnet_idx;
 DROP INDEX IF EXISTS ip_allocations_active_unique;
 DROP TABLE IF EXISTS ip_allocations;
+
+----------------------------------------------------------------------
+-- DROP: SERVERS
+----------------------------------------------------------------------
+DROP TABLE IF EXISTS servers;
 
 ----------------------------------------------------------------------
 -- DROP: REQUESTS

@@ -3,12 +3,14 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/manuellara/ipam/internal/db"
 )
 
 const authPrincipalSessionKey = "auth_principal"
+const PostLoginRedirectSessionKey = "post_login_redirect"
 
 type authContextKey struct{}
 
@@ -25,7 +27,7 @@ func AuthMiddleware(sessionManager *scs.SessionManager) Middleware {
 			if !ok {
 				GetLoggerFromContext(r.Context()).Error("Failed to retrieve authenticated principal from session")
 
-				sessionManager.Put(r.Context(), "post_login_redirect", r.URL.Path)
+				sessionManager.Put(r.Context(), PostLoginRedirectSessionKey, r.URL.Path)
 
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
@@ -43,4 +45,14 @@ func GetAuthFromContext(ctx context.Context) (Principal, bool) {
 	auth, ok := ctx.Value(authContextKey{}).(Principal)
 
 	return auth, ok
+}
+
+// SafeRedirectPath returns path if it's a safe, same-site relative path,
+// otherwise "/". Guards against a stored value ever being something like
+// "//evil.com" (a protocol-relative URL) being used as a redirect target.
+func SafeRedirectPath(path string) string {
+	if path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return "/"
+	}
+	return path
 }

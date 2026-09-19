@@ -6,16 +6,21 @@ addresses. It is intended to replace per-subnet spreadsheets with a workflow
 that also generates standardized hostnames.
 
 The project is currently under active development. The repository contains the
-database schema, migrations, sqlc data-access layer, session storage, middleware
-building blocks, and the initial HTTP server wiring. The complete request,
-approval, administration, and authentication workflows are documented in
+database schema, embedded migrations, sqlc data-access layer, SQLite-backed
+sessions, middleware building blocks, and the initial HTTP server wiring. The
+current server exposes the local login/logout flow and `/healthz`; the broader
+request, approval, administration, and integration workflows are documented in
 [`docs/routes.md`](docs/routes.md) and are being implemented incrementally.
 
 ## Features and design
 
-- SQLite database with embedded, automatic migrations.
+- SQLite database with embedded, automatic migrations, WAL mode, foreign-key
+  enforcement, and a busy timeout applied through the connection DSN.
 - SQL queries compiled to Go with [sqlc](https://sqlc.dev/).
-- SQLite-backed sessions using `scs`.
+- SQLite-backed sessions using `scs`, with a 12-hour lifetime and a 30-minute
+  idle timeout.
+- Local administrator authentication using Argon2id password hashes and
+  audit-logged login/logout events.
 - Request and approval workflow for IP allocation.
 - Site and environment mappings so requesters do not choose IPs directly.
 - Reserved-address support and transactional allocation of the next free IP.
@@ -24,8 +29,14 @@ approval, administration, and authentication workflows are documented in
 - Separate decommission approval flow; released IPs may be reused, but hostnames
   and sequence numbers are not.
 - Planned concurrent authentication sources: local administrator, OIDC, and
-  LDAP/AD.
+  LDAP/AD. OIDC and LDAP settings are stored in singleton database tables and
+  are intended to be editable by an administrator at runtime.
+- OIDC and LDAP secrets are intentionally stored in plaintext in the database,
+  so encrypted or protected backups are important because backup media will
+  contain those credentials as well.
 - Additive roles: `admin`, `approver`, `requester`, and `viewer`.
+- Planned maintenance-window integration API using hashed API keys, with
+  blocked/allowed server queries and batch window creation.
 
 ## Requirements
 
@@ -51,24 +62,38 @@ git clone https://github.com/manuellara/ipam.git
 cd ipam
 ```
 
-Optionally run the test suite:
+Set the local administrator password before starting the server. It must be at
+least 12 characters long. Values can be exported in the shell or placed in a
+local `.env` file (which is not committed):
+
+```sh
+export ADMIN_PASSWORD='use-a-local-password-at-least-12-chars'
+```
+
+Run the test suite:
 
 ```sh
 go test ./...
 ```
 
-Start the HTTP server:
+Start the development server:
 
 ```sh
-go run ./cmd
+task run-dev
 ```
 
-The server listens on `http://localhost:8080`. On first startup it creates
-`ipam.db` in the current working directory and applies the embedded migrations.
-The database file is intentionally ignored by Git.
+The server listens on `http://localhost:8080`. On startup it loads `.env` if
+present, creates `ipam.db` in the current working directory, applies the
+embedded migrations, and ensures the `administrator` account uses the current
+`ADMIN_PASSWORD` value. The database file is intentionally ignored by Git.
 
-The current server wiring is still a work in progress, so some pages and login
-handlers are placeholders even though their intended routes are documented.
+The local login page is available at `/login`; successful login redirects to
+`/`. The health endpoint is `/healthz` and does not require a session.
+
+> Security note: OIDC and LDAP credentials are intentionally stored in plain
+> text in the database. That means any database backups or replicated copies of
+> the SQLite file will also contain those secrets, so the backup storage itself
+> must be protected accordingly.
 
 ## Database and code generation
 
@@ -76,9 +101,11 @@ The application runs embedded migrations during startup. To manage migrations
 manually during development, use the Taskfile:
 
 ```sh
+task migrate-create NAME=add_example_table
 task migrate-up
 task migrate-down
-task migrate-create NAME=add_example_table
+task templ-generate
+task run-dev
 ```
 
 SQL queries live in `internal/db/queries/`. After changing one of them, update
@@ -91,17 +118,23 @@ task sqlc-generate
 Do not hand-edit generated files in `internal/db/`; make changes in the SQL
 queries or migrations and regenerate the package.
 
+`task run-dev` regenerates templ output and sqlc output before starting the
+server. `task migrate-up` and `task migrate-down` use the project-local
+`.bin/migrate` binary, so the migration tool does not need to be installed
+globally.
+
 ## Project layout
 
 ```text
 cmd/                 Application entrypoint and HTTP controllers
 docs/                Route and workflow documentation
-internal/database/   SQLite connection and embedded migrations
+internal/database/   SQLite connection, DSN settings, and embedded migrations
 internal/db/         sqlc-generated models, queries, and interfaces
+internal/auth/       Local-admin bootstrap and authentication helpers
 internal/middleware/ HTTP middleware, CSRF, logging, and RBAC building blocks
 internal/session/    SQLite-backed session configuration
 migrations/          Database schema migrations
-static/              Vendored browser assets
+static/              Vendored htmx, Alpine.js, and Oat assets
 Taskfile.yml         Development tasks
 sqlc.yml             sqlc configuration
 ```

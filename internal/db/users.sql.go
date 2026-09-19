@@ -9,16 +9,56 @@ import (
 	"context"
 )
 
-const listRoleNamesByUserID = `-- name: ListRoleNamesByUserID :many
-SELECT roles.name
-FROM roles
-JOIN user_roles ON user_roles.role_id = roles.id
-WHERE user_roles.user_id = ?
-ORDER BY roles.name ASC
+const createLocalAdminUser = `-- name: CreateLocalAdminUser :one
+INSERT INTO users (display_name, auth_source, password_hash, active)
+VALUES ('administrator', 'local', ?1, 1)
+RETURNING id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at
 `
 
-func (q *Queries) ListRoleNamesByUserID(ctx context.Context, userID int64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listRoleNamesByUserID, userID)
+func (q *Queries) CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error) {
+	row := q.db.QueryRowContext(ctx, createLocalAdminUser, passwordHash)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Email,
+		&i.AuthSource,
+		&i.OidcSubject,
+		&i.PasswordHash,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLocalAdminUser = `-- name: GetLocalAdminUser :one
+SELECT id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at FROM users WHERE auth_source = 'local' LIMIT 1
+`
+
+func (q *Queries) GetLocalAdminUser(ctx context.Context) (User, error) {
+	row := q.db.QueryRowContext(ctx, getLocalAdminUser)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Email,
+		&i.AuthSource,
+		&i.OidcSubject,
+		&i.PasswordHash,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getUserRoleNames = `-- name: GetUserRoleNames :many
+SELECT r.name FROM roles r
+JOIN user_roles ur ON ur.role_id = r.id
+WHERE ur.user_id = ?1
+`
+
+func (q *Queries) GetUserRoleNames(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, getUserRoleNames, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -38,4 +78,20 @@ func (q *Queries) ListRoleNamesByUserID(ctx context.Context, userID int64) ([]st
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUserPasswordHash = `-- name: UpdateUserPasswordHash :exec
+UPDATE users
+SET password_hash = ?1
+WHERE id = ?2
+`
+
+type UpdateUserPasswordHashParams struct {
+	PasswordHash *string `json:"password_hash"`
+	ID           int64   `json:"id"`
+}
+
+func (q *Queries) UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserPasswordHash, arg.PasswordHash, arg.ID)
+	return err
 }

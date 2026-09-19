@@ -9,7 +9,13 @@ import (
 )
 
 type Querier interface {
-	ListRoleNamesByUserID(ctx context.Context, userID int64) ([]string, error)
+	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
+	CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error)
+	GetLDAPConfig(ctx context.Context) (LdapConfig, error)
+	GetLocalAdminUser(ctx context.Context) (User, error)
+	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
+	GetUserRoleNames(ctx context.Context, userID int64) ([]string, error)
+	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error
 }
 
 var _ Querier = (*Queries)(nil)

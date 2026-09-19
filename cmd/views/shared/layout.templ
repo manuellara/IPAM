@@ -1,0 +1,19 @@
+package shared
+
+// Layout renders the oat top nav bar plus an always-collapsible sidebar (see https://oat.ink/components/#sidebar).
+templ Layout(sidebar templ.Component, main templ.Component) {
+	<div data-sidebar-layout="always">
+		<nav data-topnav>
+			<button type="button" data-sidebar-toggle aria-label="Toggle sidebar">☰</button>
+			<strong>IPAM</strong>
+		</nav>
+		<aside data-sidebar>
+			<nav>
+				@sidebar
+			</nav>
+		</aside>
+		<main>
+			@main
+		</main>
+	</div>
+}

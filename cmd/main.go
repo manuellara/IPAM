@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 
-	"github.com/manuellara/ipam/cmd/controllers"
+	"github.com/manuellara/ipam/cmd/controllers/shared"
+	"github.com/manuellara/ipam/internal/auth"
+	"github.com/manuellara/ipam/internal/config"
 	"github.com/manuellara/ipam/internal/database"
 	"github.com/manuellara/ipam/internal/db"
 	"github.com/manuellara/ipam/internal/logging"
@@ -18,6 +21,12 @@ import (
 func main() {
 	// Initialize structured logger
 	logging.NewSLogger()
+	
+	// Load environment variables from the .env file if present
+	if err := config.Load(""); err != nil {
+		slog.Error("environment loading failed", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize database service
 	databaseService, err := database.New("")
@@ -33,6 +42,13 @@ func main() {
 	// Initialize sqlc service
 	sqlcService := db.New(databaseService.DB())
 
+	// Ensure that the local admin user exists and has the correct password.
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+	if err := auth.EnsureLocalAdmin(context.Background(), sqlcService, adminPassword); err != nil {
+		slog.Error("local admin bootstrap failed", "error", err)
+		os.Exit(1)
+	}
+
 	// Initialize middleware stacks
 	publicMiddleware := middleware.MiddlewareStack(
 		// Middleware execution order: top to bottom
@@ -41,8 +57,16 @@ func main() {
 		middleware.CsrfMiddleware,
 	)
 
+	authenticatedMiddleware := middleware.MiddlewareStack(
+		// Middleware execution order: top to bottom
+		sessionManager.LoadAndSave,
+		middleware.LoggingMiddleware,
+		middleware.CsrfMiddleware,
+		middleware.AuthMiddleware(sessionManager),
+	)
+
 	// Initialize controllers
-	loginController := controllers.NewLoginController(sqlcService, sessionManager)
+	loginController := shared.NewLoginController(sqlcService, sessionManager)
 
 	// Initialize the HTTP request multiplexer
 	mux := http.NewServeMux()
@@ -55,7 +79,7 @@ func main() {
 	mux.Handle("/healthz", web.HealthHandler(databaseService))
 
 	// Register routes with their respective handlers and middleware
-	loginController.RegisterLoginRoutes(mux, publicMiddleware, nil)
+	loginController.RegisterLoginRoutes(mux, publicMiddleware, authenticatedMiddleware)
 
 	// Run the HTTP server with session management
 	if err := http.ListenAndServe(":8080", middleware.RecoverMiddleware(mux)); err != nil {

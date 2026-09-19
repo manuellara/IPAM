@@ -4,6 +4,17 @@
 
 package db
 
+type ApiKey struct {
+	ID         int64   `json:"id"`
+	Label      string  `json:"label"`
+	KeyHash    string  `json:"key_hash"`
+	Scope      string  `json:"scope"`
+	CreatedBy  *int64  `json:"created_by"`
+	CreatedAt  string  `json:"created_at"`
+	LastUsedAt *string `json:"last_used_at"`
+	RevokedAt  *string `json:"revoked_at"`
+}
+
 type AuditLog struct {
 	ID          int64   `json:"id"`
 	ActorUserID *int64  `json:"actor_user_id"`
@@ -30,8 +41,36 @@ type IpAllocation struct {
 	SubnetID    int64   `json:"subnet_id"`
 	IpAddress   string  `json:"ip_address"`
 	RequestID   *int64  `json:"request_id"`
+	ServerID    *int64  `json:"server_id"`
 	AllocatedAt string  `json:"allocated_at"`
 	ReleasedAt  *string `json:"released_at"`
+}
+
+type LdapConfig struct {
+	ID           int64   `json:"id"`
+	Enabled      int64   `json:"enabled"`
+	Server       *string `json:"server"`
+	Port         *int64  `json:"port"`
+	BaseDn       *string `json:"base_dn"`
+	BindDn       *string `json:"bind_dn"`
+	BindPassword *string `json:"bind_password"`
+	UserFilter   *string `json:"user_filter"`
+}
+
+type MaintenanceWindow struct {
+	ID              int64   `json:"id"`
+	Label           string  `json:"label"`
+	Rrule           *string `json:"rrule"`
+	Dtstart         string  `json:"dtstart"`
+	DurationMinutes int64   `json:"duration_minutes"`
+	Timezone        string  `json:"timezone"`
+	CreatedBy       *int64  `json:"created_by"`
+	CreatedAt       string  `json:"created_at"`
+}
+
+type MaintenanceWindowServer struct {
+	WindowID int64 `json:"window_id"`
+	ServerID int64 `json:"server_id"`
 }
 
 type NamingScheme struct {
@@ -59,6 +98,15 @@ type NamingSequence struct {
 	LastSeq        int64  `json:"last_seq"`
 }
 
+type OidcConfig struct {
+	ID           int64   `json:"id"`
+	Enabled      int64   `json:"enabled"`
+	IssuerUrl    *string `json:"issuer_url"`
+	ClientID     *string `json:"client_id"`
+	ClientSecret *string `json:"client_secret"`
+	RedirectUrl  *string `json:"redirect_url"`
+}
+
 type Request struct {
 	ID             int64   `json:"id"`
 	RequesterID    int64   `json:"requester_id"`
@@ -78,6 +126,15 @@ type Request struct {
 type Role struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+}
+
+type Server struct {
+	ID          int64   `json:"id"`
+	Hostname    string  `json:"hostname"`
+	RequestID   *int64  `json:"request_id"`
+	Description *string `json:"description"`
+	CreatedBy   *int64  `json:"created_by"`
+	CreatedAt   string  `json:"created_at"`
 }
 
 type Session struct {

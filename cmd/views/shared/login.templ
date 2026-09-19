@@ -1,0 +1,45 @@
+package shared
+
+templ LoginPage(errMsg string, oidcEnabled bool, ldapEnabled bool) {
+	@Boilerplate("IPAM — Login") {
+		<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem; box-sizing: border-box;">
+			<article style="width: 100%; max-width: 28rem; box-sizing: border-box; padding: 2rem;">
+				<h1>Sign in</h1>
+
+				if errMsg != "" {
+					<p class="error" role="alert">{ errMsg }</p>
+				}
+
+				if oidcEnabled {
+					<p><a href="/auth/oidc/login" class="button" style="display: block; text-align: center;">Sign in with SSO</a></p>
+				}
+
+				if ldapEnabled {
+					<form method="POST" action="/login">
+						<fieldset>
+							<legend>Sign in with LDAP</legend>
+							<input type="hidden" name="method" value="ldap"/>
+							<label for="ldap-username">Username</label>
+							<input type="text" id="ldap-username" name="username" required autocomplete="username"/>
+							<label for="ldap-password">Password</label>
+							<input type="password" id="ldap-password" name="password" required autocomplete="current-password"/>
+							<button type="submit" style="width: 100%;">Sign in</button>
+						</fieldset>
+					</form>
+				}
+
+				<details>
+					<summary>Sign in as local administrator</summary>
+					<form method="POST" action="/login">
+						<fieldset>
+							<input type="hidden" name="method" value="local"/>
+							<label for="local-password">Password</label>
+							<input type="password" id="local-password" name="password" required autocomplete="current-password"/>
+							<button type="submit" style="width: 100%; margin-top: 1rem;">Sign in</button>
+						</fieldset>
+					</form>
+				</details>
+			</article>
+		</div>
+	}
+}

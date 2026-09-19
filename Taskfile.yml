@@ -3,6 +3,7 @@ version: '3'
 vars:
   BIN_DIR: '.bin'
   MIGRATE_BIN: '{{.BIN_DIR}}/migrate'
+  SQLITE_DB: 'ipam.db'
 
 tasks:
 
@@ -27,21 +28,31 @@ tasks:
     desc: Run database migrations up
     deps: [setup-migrate]
     cmds:
-      - "{{.MIGRATE_BIN}} -database 'sqlite3://ipam.db' -path ./migrations up"
+      - "{{.MIGRATE_BIN}} -database 'sqlite3://{{.SQLITE_DB}}' -path ./migrations up"
 
   migrate-down:
     desc: Rollback database migrations
     deps: [setup-migrate]
     cmds:
-      - "{{.MIGRATE_BIN}} -database 'sqlite3://ipam.db' -path ./migrations down"
+      - "{{.MIGRATE_BIN}} -database 'sqlite3://{{.SQLITE_DB}}' -path ./migrations down"
 
   sqlc-generate:
     desc: Generate Go code from SQL queries using sqlc
     cmds:
       - sqlc generate
 
+  templ-generate:
+    desc: Regenerate cmd/views/*_templ.go from .templ source -- commit the output, never hand-edit it
+    cmds:
+      - templ generate
+
   run-dev:
     desc: Run the development server
+    deps: [templ-generate, sqlc-generate]
     cmds:
       - go run ./cmd/main.go
   
+  delete-db:
+    desc: Delete the database files
+    cmds:
+      - rm -f {{.SQLITE_DB}} {{.SQLITE_DB}}-shm {{.SQLITE_DB}}-wal

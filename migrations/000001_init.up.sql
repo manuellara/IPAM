@@ -26,6 +26,18 @@ CREATE TABLE user_roles (
 
 INSERT INTO roles (name) VALUES ('admin'), ('approver'), ('requester'), ('viewer');
 
+-- Seed the local admin user. id=1 is deterministic here since this is the
+-- first row ever inserted into users. password_hash starts NULL and is
+-- set on first boot by EnsureLocalAdmin from ADMIN_PASSWORD -- everything
+-- else (the user row, the admin role assignment) is seeded here instead
+-- of at runtime, so there's no window where the user exists without its
+-- role (this whole migration runs in one transaction).
+INSERT INTO users (id, display_name, auth_source, password_hash, active)
+VALUES (1, 'administrator', 'local', NULL, 1);
+
+INSERT INTO user_roles (user_id, role_id)
+SELECT 1, id FROM roles WHERE name = 'admin';
+
 -- scs sessions table (sqlite3store expected schema)
 CREATE TABLE sessions (
     token  TEXT PRIMARY KEY,
@@ -147,13 +159,30 @@ CREATE INDEX requests_requester_idx ON requests(requester_id);
 CREATE INDEX requests_status_idx ON requests(status);
 
 ----------------------------------------------------------------------
+-- SERVERS -- general asset registry, not just IPAM-provisioned ones.
+-- Auto-populated when a request is approved (request_id set) or via
+-- manual admin entry / CSV bulk import (request_id NULL). This is the
+-- central object that maintenance windows and other future features
+-- attach to, independent of how the server came to exist.
+----------------------------------------------------------------------
+CREATE TABLE servers (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    hostname    TEXT NOT NULL UNIQUE,
+    request_id  INTEGER REFERENCES requests(id),  -- NULL if manually added/imported
+    description TEXT,                              -- context, especially for non-IPAM-provisioned servers
+    created_by  INTEGER REFERENCES users(id),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+----------------------------------------------------------------------
 -- IP ALLOCATIONS
 ----------------------------------------------------------------------
 CREATE TABLE ip_allocations (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     subnet_id    INTEGER NOT NULL REFERENCES subnets(id),
     ip_address   TEXT NOT NULL,
-    request_id   INTEGER REFERENCES requests(id),  -- NULL for admin-direct allocations
+    request_id   INTEGER REFERENCES requests(id),  -- NULL for admin-direct/imported allocations
+    server_id    INTEGER REFERENCES servers(id),   -- the server this IP belongs to
     allocated_at TEXT NOT NULL DEFAULT (datetime('now')),
     released_at  TEXT   -- set on decommission approval; IP becomes reusable, hostname never is
 );
@@ -204,3 +233,89 @@ CREATE TABLE audit_log (
 
 CREATE INDEX audit_log_actor_idx ON audit_log(actor_user_id);
 CREATE INDEX audit_log_created_idx ON audit_log(created_at);
+
+----------------------------------------------------------------------
+-- AUTH PROVIDER CONFIG (OIDC, LDAP) -- admin-configurable via UI
+----------------------------------------------------------------------
+-- Singleton rows (CHECK id = 1) rather than a users-style table, since
+-- there is exactly one OIDC config and one LDAP config for the whole app.
+-- Secrets (client_secret, bind_password) are stored in plaintext -- this
+-- is a deliberate tradeoff for a self-hosted, open source tool: the
+-- operator already has full filesystem access to the SQLite file, same
+-- trust boundary as an env var. The real consequence is that Litestream
+-- backups to S3 now contain live secrets, not just app data -- document
+-- this for self-hosters so they secure the backup bucket accordingly.
+--
+-- LDAP has no stored TLS toggle by design: TLS/StartTLS is hardcoded in
+-- the Go connection code, never a DB-driven option, so it can't be
+-- disabled via a config UI mistake.
+
+CREATE TABLE oidc_config (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled       INTEGER NOT NULL DEFAULT 0,
+    issuer_url    TEXT,
+    client_id     TEXT,
+    client_secret TEXT,
+    redirect_url  TEXT
+);
+
+INSERT INTO oidc_config (id, enabled) VALUES (1, 0);
+
+CREATE TABLE ldap_config (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled       INTEGER NOT NULL DEFAULT 0,
+    server        TEXT,
+    port          INTEGER,
+    base_dn       TEXT,
+    bind_dn       TEXT,
+    bind_password TEXT,
+    user_filter   TEXT   -- e.g. "(sAMAccountName=%s)" for Active Directory
+);
+
+INSERT INTO ldap_config (id, enabled) VALUES (1, 0);
+
+----------------------------------------------------------------------
+-- MAINTENANCE WINDOWS -- blackout periods for IPAM-provisioned servers,
+-- consumed by external integrations (e.g. deployment tools) via the
+-- /api/maintenance/* endpoints. Not vendor-specific -- general-purpose.
+----------------------------------------------------------------------
+-- rrule follows RFC 5545 (iCalendar). NULL rrule means a one-time
+-- occurrence at dtstart for duration_minutes -- covers orgs whose
+-- blackout dates are computed externally/manually each period (e.g.
+-- payroll cycles that shift around holidays) rather than truly periodic.
+-- Non-NULL rrule expands to multiple occurrences, each duration_minutes long.
+CREATE TABLE maintenance_windows (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    label            TEXT NOT NULL,
+    rrule            TEXT,                        -- NULL = one-time window
+    dtstart          TEXT NOT NULL,                -- anchor date/time for rrule expansion, or the one-time start
+    duration_minutes INTEGER NOT NULL,
+    timezone         TEXT NOT NULL DEFAULT 'UTC',  -- recurrence math (e.g. "last day of month") is timezone-sensitive
+    created_by       INTEGER REFERENCES users(id),
+    created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE maintenance_window_servers (
+    window_id INTEGER NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,
+    server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    PRIMARY KEY (window_id, server_id)
+);
+
+----------------------------------------------------------------------
+-- API KEYS -- machine auth for external integrations (maintenance
+-- window read/write endpoints). Hashed, not plaintext: unlike
+-- oidc_config/ldap_config secrets (which WE present to an external
+-- system and must read back), an API key is a credential WE issue and
+-- only ever need to verify, never read back -- same trust model as a
+-- password.
+----------------------------------------------------------------------
+CREATE TABLE api_keys (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    label        TEXT NOT NULL,
+    key_hash     TEXT NOT NULL UNIQUE,     -- argon2id, same as local admin password
+    scope        TEXT NOT NULL CHECK (scope IN ('read', 'write')),
+    created_by   INTEGER REFERENCES users(id),
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    last_used_at TEXT,
+    revoked_at   TEXT
+);
