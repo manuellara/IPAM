@@ -9,6 +9,16 @@ import (
 	"context"
 )
 
+const assignViewerRole = `-- name: AssignViewerRole :exec
+INSERT OR IGNORE INTO user_roles (user_id, role_id)
+SELECT ?1, id FROM roles WHERE name = 'viewer'
+`
+
+func (q *Queries) AssignViewerRole(ctx context.Context, userID int64) error {
+	_, err := q.db.ExecContext(ctx, assignViewerRole, userID)
+	return err
+}
+
 const createLocalAdminUser = `-- name: CreateLocalAdminUser :one
 INSERT INTO users (display_name, auth_source, password_hash, active)
 VALUES ('administrator', 'local', ?1, 1)
@@ -31,12 +41,62 @@ func (q *Queries) CreateLocalAdminUser(ctx context.Context, passwordHash *string
 	return i, err
 }
 
+const createOIDCUser = `-- name: CreateOIDCUser :one
+INSERT INTO users (display_name, email, auth_source, oidc_subject, active)
+VALUES (?1, ?2, 'oidc', ?3, 1)
+RETURNING id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at
+`
+
+type CreateOIDCUserParams struct {
+	DisplayName string  `json:"display_name"`
+	Email       *string `json:"email"`
+	OidcSubject *string `json:"oidc_subject"`
+}
+
+func (q *Queries) CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createOIDCUser, arg.DisplayName, arg.Email, arg.OidcSubject)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Email,
+		&i.AuthSource,
+		&i.OidcSubject,
+		&i.PasswordHash,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getLocalAdminUser = `-- name: GetLocalAdminUser :one
 SELECT id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at FROM users WHERE auth_source = 'local' LIMIT 1
 `
 
 func (q *Queries) GetLocalAdminUser(ctx context.Context) (User, error) {
 	row := q.db.QueryRowContext(ctx, getLocalAdminUser)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Email,
+		&i.AuthSource,
+		&i.OidcSubject,
+		&i.PasswordHash,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getOIDCUser = `-- name: GetOIDCUser :one
+SELECT id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at FROM users
+WHERE auth_source = 'oidc' AND oidc_subject = ?1
+LIMIT 1
+`
+
+func (q *Queries) GetOIDCUser(ctx context.Context, oidcSubject *string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getOIDCUser, oidcSubject)
 	var i User
 	err := row.Scan(
 		&i.ID,

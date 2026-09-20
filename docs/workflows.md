@@ -92,7 +92,29 @@ the same `users`/`user_roles` tables:
 - **OIDC** — config (`issuer_url`, `client_id`, `client_secret`,
   `redirect_url`) and an `enabled` flag live in `oidc_config` (singleton
   row), admin-editable at runtime via `/admin/auth-settings`. Only shown
-  on the login page if `enabled = 1`.
+  on the login page if `enabled = 1`. Full flow:
+  1. `GET /auth/oidc/login` — build the `oidc.Provider`/`oauth2.Config`
+     fresh from the current DB row (rebuilt per attempt, not cached —
+     the config can change at runtime via `/admin/auth-settings`, and a
+     `.well-known` fetch per login is cheap at this traffic scale).
+     Generate a random `state` and `nonce` (`crypto/rand`), store both in
+     the session, redirect to the IdP's authorization URL.
+  2. `GET /auth/oidc/callback` — verify `state` with a **constant-time**
+     comparison (`crypto/subtle`) against what was stored; check for an
+     `error` query param (user cancelled at the IdP); exchange the code
+     for tokens; verify the ID token's signature and `nonce` claim;
+     extract `sub` (and `name`/`preferred_username`/`email` for display).
+  3. Look up `users` by `oidc_subject`. If not found: **create the user
+     and assign the `viewer` role inside a single DB transaction**
+     (`db.WithTx` helper — see below) — a mid-write failure here must
+     never leave a user provisioned with no role, same bug class as the
+     local admin bootstrap, fixed the same way (atomicity), just applied
+     at runtime since OIDC users are created on demand rather than seeded.
+  4. Renew the session token, set the authenticated principal, redirect
+     to wherever `redirectAfterLogin` resolves.
+  - Every outcome (invalid state, IdP error, provider unreachable, token
+    verification failure, provisioning failure, role lookup failure,
+    session renewal failure, success) is audit-logged — not just success.
 - **LDAP/AD** — config lives in `ldap_config`, same pattern. TLS/StartTLS
   is hardcoded in the Go connection code, never a stored/configurable
   option — there is no `use_tls` column, by design.
@@ -108,6 +130,51 @@ the same `users`/`user_roles` tables:
 - Sessions: `scs` + `sqlite3store`. After login, redirect to whatever path
   was stashed before the auth redirect (`PostLoginRedirectSessionKey`),
   falling back to `/dashboard`.
+
+## Atomic Multi-Step Writes (`db.WithTx`)
+
+Any write that spans more than one statement where a partial failure
+would leave the DB in a broken/inconsistent state must run inside a real
+transaction — not just sequential calls hoping nothing fails in between.
+This bit us once already (the local admin user existing with no role
+assigned, before that seed moved into the migration's own transaction)
+and would bite again for any runtime multi-step write without it.
+
+```go
+// internal/db/tx.go
+func WithTx(ctx context.Context, sqlDB *sql.DB, fn func(*Queries) error) error {
+	tx, err := sqlDB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	q := New(tx)
+	if err := fn(q); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+```
+
+Callers need both `*db.Queries` (for normal reads) and the raw `*sql.DB`
+(to open transactions) — controllers that need this hold both.
+
+**Current users of this pattern:**
+- OIDC user provisioning (create user + assign `viewer` role) — see
+  Authentication Flow above.
+
+**Future users of this pattern (not yet built):**
+- The approval transaction (allocate IP, increment naming sequence,
+  generate/validate name, create/update `servers` row, update the
+  request, write `audit_log`) — this was always described as "one DB
+  transaction" throughout this doc; `db.WithTx` is the mechanism that
+  makes that literally true rather than just a description.
+- LDAP user provisioning, once built (same shape as OIDC).
+- The CSV server import and the batch maintenance-window API endpoint use
+  a related idea — per-item processing with per-item success/failure —
+  but are NOT single transactions (a bad row shouldn't roll back the good
+  ones). Don't reach for `db.WithTx` there; it's the wrong tool for
+  "partial success is fine," only the right tool for "all or nothing."
 
 ## Decommission Workflow
 

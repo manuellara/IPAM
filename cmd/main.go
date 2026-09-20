@@ -67,7 +67,7 @@ func main() {
 	)
 
 	// Initialize controllers
-	loginController := shared.NewLoginController(sqlcService, sessionManager)
+	loginController := shared.NewLoginController(sqlcService, databaseService.DB(), sessionManager)
 	dashboardController := shared.NewDashboardController(sqlcService, sessionManager)
 	authSettingsController := admincontroller.NewAuthSettingsController(sqlcService, sessionManager)
 

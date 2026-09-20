@@ -30,7 +30,7 @@ func Layout(sidebar templ.Component, main templ.Component) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div data-sidebar-layout=\"always\"><nav data-topnav><button type=\"button\" data-sidebar-toggle aria-label=\"Toggle sidebar\">☰</button> <strong>IPAM</strong></nav><aside data-sidebar>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div data-sidebar-layout=\"always\"><nav data-topnav><button type=\"button\" data-sidebar-toggle aria-label=\"Toggle sidebar\">☰</button> <strong>IPAM</strong><form method=\"POST\" action=\"/logout\" style=\"margin-left: auto;\"><button type=\"submit\">Log out</button></form></nav><aside data-sidebar>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -159,6 +159,17 @@ external integrations, not a browser-facing route group. Don't apply
 session or CSRF middleware to `/api/*` routes, and don't apply the
 API-key middleware to browser-facing routes.
 
+## Atomic multi-step writes
+
+Use `db.WithTx(ctx, sqlDB, func(q *db.Queries) error { ... })` for any
+write spanning more than one statement where a partial failure would
+leave the DB inconsistent (e.g. a user created with no role assigned).
+See `docs/workflows.md`'s "Atomic Multi-Step Writes" section for the full
+pattern and current/future callers (OIDC provisioning, the approval
+transaction). **Don't** use it for per-item batch operations where
+partial success is the intended behavior (CSV import, the maintenance-
+window batch API) — those are explicitly NOT single transactions.
+
 ## Core workflow (the thing this app actually does)
 
 1. Requester picks a naming scheme, site, env, app, role. **No subnet or IP

@@ -88,8 +88,7 @@ role, and **None** means no auth required.
 | ACTION | POST | `/admin/allocations` | `admin` | Admin-direct allocation; also creates a `servers` row |
 | PAGE | GET | `/admin/allocations/export.csv` | `admin` | Current (non-released) allocations |
 | PAGE | GET | `/admin/auth-settings` | `admin` | View/edit `oidc_config` and `ldap_config` |
-| ACTION | POST | `/admin/auth-settings/oidc` | `admin` | Update OIDC settings; takes effect on next `/login` load, no restart |
-| ACTION | POST | `/admin/auth-settings/ldap` | `admin` | Update LDAP settings; takes effect on next `/login` load, no restart |
+| ACTION | POST | `/admin/auth-settings` | `admin` | Takes effect on next `/login` load, no restart |
 | PAGE | GET | `/admin/servers` | `admin` | All servers (any origin), search by hostname/description |
 | PAGE | GET | `/admin/servers/import` | `admin` | CSV upload form (hostname, ip_address, subnet, description) |
 | ACTION | POST | `/admin/servers/import` | `admin` | Per-row processing + per-row success/failure report; reuses subnet overlap/duplicate-IP validation |

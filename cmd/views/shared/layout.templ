@@ -6,6 +6,9 @@ templ Layout(sidebar templ.Component, main templ.Component) {
 		<nav data-topnav>
 			<button type="button" data-sidebar-toggle aria-label="Toggle sidebar">☰</button>
 			<strong>IPAM</strong>
+			<form method="POST" action="/logout" style="margin-left: auto;">
+				<button type="submit">Log out</button>
+			</form>
 		</nav>
 		<aside data-sidebar>
 			@sidebar

@@ -1,7 +1,12 @@
 package shared
 
 import (
+	"context"
+	"crypto/subtle"
+	"database/sql"
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/alexedwards/scs/v2"
@@ -14,28 +19,42 @@ import (
 const (
 	auditActionLocalLoginSuccess = "auth.local_login_success"
 	auditActionLocalLoginFailure = "auth.local_login_failure"
+	auditActionOIDCLoginSuccess  = "auth.oidc_login_success"
+	auditActionOIDCLoginFailure  = "auth.oidc_login_failure"
 	auditActionLogout            = "auth.logout"
+	oidcStateSessionKey          = "oidc_state"
+	oidcNonceSessionKey          = "oidc_nonce"
 )
 
 // LoginController handles staff login functionality, including rendering the login page and processing login requests.
 type LoginController struct {
 	store          *db.Queries
+	sqlDB          *sql.DB
 	sessionManager *scs.SessionManager
 }
 
 // NewLoginController creates a new instance of LoginController with the provided database service and session manager.
-func NewLoginController(store *db.Queries, sessionManager *scs.SessionManager) *LoginController {
+func NewLoginController(store *db.Queries, sqlDB *sql.DB, sessionManager *scs.SessionManager) *LoginController {
 	return &LoginController{
 		store:          store,
+		sqlDB:          sqlDB,
 		sessionManager: sessionManager,
 	}
 }
 
 // RegisterLoginRoutes registers the login routes with the provided HTTP multiplexer and middleware.
 func (c *LoginController) RegisterLoginRoutes(mux *http.ServeMux, pmw middleware.Middleware, mw middleware.Middleware) {
+	if pmw == nil {
+		pmw = func(next http.Handler) http.Handler { return next }
+	}
+	if mw == nil {
+		mw = func(next http.Handler) http.Handler { return next }
+	}
 	mux.Handle("GET /login", pmw(http.HandlerFunc(c.login)))
 	mux.Handle("POST /login", pmw(http.HandlerFunc(c.handleLoginPost)))
 	mux.Handle("POST /logout", mw(http.HandlerFunc(c.logout)))
+	mux.Handle("GET /auth/oidc/login", pmw(http.HandlerFunc(c.oidcLogin)))
+	mux.Handle("GET /auth/oidc/callback", pmw(http.HandlerFunc(c.oidcCallback)))
 }
 
 // Login handles the HTTP request for the login page.
@@ -69,6 +88,14 @@ func (c *LoginController) handleLoginPost(w http.ResponseWriter, r *http.Request
 
 // strPtr returns a pointer to the given string. Useful for optional string fields in database operations.
 func strPtr(s string) *string { return &s }
+
+// strPtrOrNil returns a pointer to s, or nil if s is empty.
+func strPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
 
 // handleLocalLoginPost handles the login process for the local administrator account. It verifies the submitted password, manages the session, and logs audit events.
 func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Request) {
@@ -173,4 +200,131 @@ func (c *LoginController) redirectAfterLogin(w http.ResponseWriter, r *http.Requ
 		c.sessionManager.PopString(r.Context(), middleware.PostLoginRedirectSessionKey),
 	)
 	http.Redirect(w, r, redirectTo, http.StatusSeeOther)
+}
+
+// oidcLogin starts the authorization-code flow with the configured provider.
+func (c *LoginController) oidcLogin(w http.ResponseWriter, r *http.Request) {
+	cfg, err := c.store.GetOIDCConfig(r.Context())
+	if err != nil || !auth.ConfigEnabled(cfg.Enabled) || cfg.IssuerUrl == nil || cfg.ClientID == nil || cfg.ClientSecret == nil || cfg.RedirectUrl == nil {
+		http.Error(w, "OIDC sign-in is not configured", http.StatusNotFound)
+		return
+	}
+
+	oidcClient, err := auth.NewOIDCClient(r.Context(), *cfg.IssuerUrl, *cfg.ClientID, *cfg.ClientSecret, *cfg.RedirectUrl)
+	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Error("oidc provider discovery failed", "error", err)
+		http.Error(w, "Unable to connect to the OIDC provider", http.StatusBadGateway)
+		return
+	}
+
+	state, err := auth.RandomOIDCString()
+	if err != nil {
+		http.Error(w, "Unable to start OIDC sign-in", http.StatusInternalServerError)
+		return
+	}
+	nonce, err := auth.RandomOIDCString()
+	if err != nil {
+		http.Error(w, "Unable to start OIDC sign-in", http.StatusInternalServerError)
+		return
+	}
+	c.sessionManager.Put(r.Context(), oidcStateSessionKey, state)
+	c.sessionManager.Put(r.Context(), oidcNonceSessionKey, nonce)
+
+	http.Redirect(w, r, oidcClient.AuthorizationURL(state, nonce), http.StatusFound)
+}
+
+// oidcCallback completes the authorization-code flow, provisions the user,
+// and establishes the normal IPAM session.
+func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
+	expectedState := c.sessionManager.PopString(r.Context(), oidcStateSessionKey)
+	if expectedState == "" || subtle.ConstantTimeCompare([]byte(expectedState), []byte(r.URL.Query().Get("state"))) != 1 {
+		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "invalid state")
+		http.Error(w, "Invalid OIDC state", http.StatusBadRequest)
+		return
+	}
+	nonce := c.sessionManager.PopString(r.Context(), oidcNonceSessionKey)
+	if r.URL.Query().Get("error") != "" {
+		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "sign-in cancelled")
+		c.renderLoginPage(w, r, "OIDC sign-in was cancelled.")
+		return
+	}
+
+	cfg, err := c.store.GetOIDCConfig(r.Context())
+	if err != nil || !auth.ConfigEnabled(cfg.Enabled) || cfg.IssuerUrl == nil || cfg.ClientID == nil || cfg.ClientSecret == nil || cfg.RedirectUrl == nil {
+		http.Error(w, "OIDC sign-in is not configured", http.StatusNotFound)
+		return
+	}
+	oidcClient, err := auth.NewOIDCClient(r.Context(), *cfg.IssuerUrl, *cfg.ClientID, *cfg.ClientSecret, *cfg.RedirectUrl)
+	if err != nil {
+		http.Error(w, "Unable to connect to the OIDC provider", http.StatusBadGateway)
+		return
+	}
+	claims, err := oidcClient.VerifyCode(r.Context(), r.URL.Query().Get("code"), nonce)
+	if err != nil {
+		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "authentication failed")
+		http.Error(w, "OIDC authentication failed", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := c.store.GetOIDCUser(r.Context(), &claims.Subject)
+	if errors.Is(err, sql.ErrNoRows) {
+		displayName := strings.TrimSpace(claims.Name)
+		if displayName == "" {
+			displayName = strings.TrimSpace(claims.PreferredUsername)
+		}
+		if displayName == "" {
+			displayName = claims.Subject
+		}
+		var email *string
+		if claims.Email != "" {
+			email = &claims.Email
+		}
+		// Create the OIDC user and assign the viewer role within a transaction to ensure atomicity.
+		txErr := db.WithTx(r.Context(), c.sqlDB, func(q *db.Queries) error {
+			var txErr error
+			user, txErr = q.CreateOIDCUser(r.Context(), db.CreateOIDCUserParams{
+				DisplayName: displayName, Email: email, OidcSubject: &claims.Subject,
+			})
+			if txErr != nil {
+				return txErr
+			}
+			return q.AssignViewerRole(r.Context(), user.ID)
+		})
+		err = txErr
+	}
+	if err != nil {
+		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "provisioning failed")
+		http.Error(w, "Unable to provision OIDC user", http.StatusInternalServerError)
+		return
+	}
+	roles, err := c.store.GetUserRoleNames(r.Context(), user.ID)
+	if err != nil {
+		c.auditOIDC(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
+		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
+		return
+	}
+	if err := c.sessionManager.RenewToken(r.Context()); err != nil {
+		c.auditOIDC(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
+		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
+		return
+	}
+	c.auditOIDC(r.Context(), &user.ID, auditActionOIDCLoginSuccess, "login successful")
+	middleware.SetAuthenticatedPrincipal(r.Context(), c.sessionManager, user, roles)
+	c.redirectAfterLogin(w, r)
+}
+
+// auditOIDC writes an audit_log entry for an OIDC login attempt, logging
+// any write failure without blocking the actual auth flow.
+func (c *LoginController) auditOIDC(ctx context.Context, userID *int64, action, detail string) {
+	params := db.CreateAuditLogParams{
+		ActorUserID: userID,
+		Action:      action,
+		TargetType:  strPtrOrNil("user"),
+	}
+	if detail != "" {
+		params.Detail = strPtrOrNil(detail)
+	}
+	if err := c.store.CreateAuditLog(ctx, params); err != nil {
+		middleware.GetLoggerFromContext(ctx).Error("audit log creation failed", "error", err)
+	}
 }

@@ -41,19 +41,19 @@ func LoginPage(errMsg string, oidcEnabled bool, ldapEnabled bool) templ.Componen
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div style=\"min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem; box-sizing: border-box;\"><article style=\"width: 100%; max-width: 28rem; box-sizing: border-box; padding: 2rem;\"><h1>Sign in</h1>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div style=\"min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem; box-sizing: border-box;\"><div class=\"card\" style=\"width: 100%; max-width: 28rem; box-sizing: border-box;\"><h1 style=\"text-align: center; margin-block-end: 0;\">IP Address Management</h1><p class=\"mb-6\" style=\"text-align: center; color: var(--muted-foreground);\">Sign in to request, approve, and track IP allocations across your network.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if errMsg != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"error\" role=\"alert\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"error mb-4\" role=\"alert\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/login.templ`, Line: 10, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/login.templ`, Line: 11, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -65,18 +65,24 @@ func LoginPage(errMsg string, oidcEnabled bool, ldapEnabled bool) templ.Componen
 				}
 			}
 			if oidcEnabled {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<p><a href=\"/auth/oidc/login\" class=\"button\" style=\"display: block; text-align: center;\">Sign in with SSO</a></p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<a href=\"/auth/oidc/login\" class=\"button\" style=\"width: 100%; box-sizing: border-box;\">Sign in with SSO</a> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			if oidcEnabled && ldapEnabled {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<hr class=\"mt-6 mb-6\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if ldapEnabled {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<form method=\"POST\" action=\"/login\"><fieldset><legend>Sign in with LDAP</legend> <input type=\"hidden\" name=\"method\" value=\"ldap\"> <label for=\"ldap-username\">Username</label> <input type=\"text\" id=\"ldap-username\" name=\"username\" required autocomplete=\"username\"> <label for=\"ldap-password\">Password</label> <input type=\"password\" id=\"ldap-password\" name=\"password\" required autocomplete=\"current-password\"> <button type=\"submit\" style=\"width: 100%;\">Sign in</button></fieldset></form>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<form method=\"POST\" action=\"/login\"><fieldset><legend>Sign in with LDAP</legend> <input type=\"hidden\" name=\"method\" value=\"ldap\"> <label for=\"ldap-username\">Username</label> <input type=\"text\" id=\"ldap-username\" name=\"username\" required autocomplete=\"username\"> <label for=\"ldap-password\">Password</label> <input type=\"password\" id=\"ldap-password\" name=\"password\" required autocomplete=\"current-password\"> <button type=\"submit\" class=\"mt-4\" style=\"width: 100%;\">Sign in</button></fieldset></form>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<details><summary>Sign in as local administrator</summary><form method=\"POST\" action=\"/login\"><fieldset><input type=\"hidden\" name=\"method\" value=\"local\"> <label for=\"local-password\">Password</label> <input type=\"password\" id=\"local-password\" name=\"password\" required autocomplete=\"current-password\"> <button type=\"submit\" style=\"width: 100%; margin-top: 1rem;\">Sign in</button></fieldset></form></details></article></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<details class=\"mt-6\"><summary>Sign in as local administrator</summary><div style=\"padding: var(--space-4);\"><form method=\"POST\" action=\"/login\"><fieldset style=\"border: none; padding: 0; margin: 0;\"><input type=\"hidden\" name=\"method\" value=\"local\"> <label for=\"local-password\">Password</label> <input type=\"password\" id=\"local-password\" name=\"password\" required autocomplete=\"current-password\"> <button type=\"submit\" class=\"mt-4\" style=\"width: 100%;\">Sign in</button></fieldset></form></div></details></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

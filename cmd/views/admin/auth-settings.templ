@@ -38,9 +38,9 @@ templ AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig,
 						}
 						<label for="oidc-client-id">Client ID</label>
 						if oidcConfig.ClientID != nil {
-							<input type="text" id="oidc-client-id" name="client_id" value={ *oidcConfig.ClientID } autocomplete="off"/>
+							<input type="text" id="oidc-client-id" name="client_id" value={ *oidcConfig.ClientID } placeholder="ipam-client" autocomplete="off"/>
 						} else {
-							<input type="text" id="oidc-client-id" name="client_id" autocomplete="off"/>
+							<input type="text" id="oidc-client-id" name="client_id" placeholder="ipam-client" autocomplete="off"/>
 						}
 						<label for="oidc-client-secret">Client secret</label>
 						if oidcConfig.ClientSecret != nil {
@@ -88,9 +88,9 @@ templ AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig,
 						}
 						<label for="ldap-bind-dn">Bind DN</label>
 						if ldapConfig.BindDn != nil {
-							<input type="text" id="ldap-bind-dn" name="bind_dn" value={ *ldapConfig.BindDn } autocomplete="off"/>
+							<input type="text" id="ldap-bind-dn" name="bind_dn" value={ *ldapConfig.BindDn } placeholder="cn=ipam,ou=service-accounts,dc=example,dc=com" autocomplete="off"/>
 						} else {
-							<input type="text" id="ldap-bind-dn" name="bind_dn" autocomplete="off"/>
+							<input type="text" id="ldap-bind-dn" name="bind_dn" placeholder="cn=ipam,ou=service-accounts,dc=example,dc=com" autocomplete="off"/>
 						}
 						<label for="ldap-bind-password">Bind password</label>
 						if ldapConfig.BindPassword != nil {
