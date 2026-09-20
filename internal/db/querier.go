@@ -15,6 +15,8 @@ type Querier interface {
 	GetLocalAdminUser(ctx context.Context) (User, error)
 	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
 	GetUserRoleNames(ctx context.Context, userID int64) ([]string, error)
+	UpdateLDAPConfig(ctx context.Context, arg UpdateLDAPConfigParams) error
+	UpdateOIDCConfig(ctx context.Context, arg UpdateOIDCConfigParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error
 }
 

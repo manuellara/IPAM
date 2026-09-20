@@ -1,7 +1,6 @@
 ----------------------------------------------------------------------
 -- USERS, ROLES, USER_ROLES, SESSIONS
 ----------------------------------------------------------------------
--- Users: three concurrent auth sources (local admin, OIDC, LDAP) on one table
 CREATE TABLE users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     display_name  TEXT NOT NULL,
@@ -69,28 +68,20 @@ CREATE TABLE subnet_reserved_ips (
 );
 
 ----------------------------------------------------------------------
--- SITE+ENV -> SUBNET MAPPING
-----------------------------------------------------------------------
--- Requester never picks a subnet directly: site+env resolves to one automatically
-CREATE TABLE site_env_subnet_map (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    site_code  TEXT NOT NULL,
-    env_code   TEXT NOT NULL,
-    subnet_id  INTEGER NOT NULL REFERENCES subnets(id) ON DELETE RESTRICT,
-    active     INTEGER NOT NULL DEFAULT 1,
-    UNIQUE (site_code, env_code)
-);
-
-----------------------------------------------------------------------
 -- NAMING SCHEMES, TOKEN VALUES, SEQUENCES
 ----------------------------------------------------------------------
+-- naming_mode distinguishes schemes whose name is computed from tokens
+-- ('generated' -- Server, Network Device, VM) from schemes whose name is
+-- provided directly by the requester ('manual' -- e.g. F5 Virtual Server,
+-- where the "name" is an F5 VIP name, not a NetBIOS-constrained hostname).
 CREATE TABLE naming_schemes (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT NOT NULL UNIQUE,       -- "Server", "Network Device", "VM"
-    template     TEXT NOT NULL,              -- "{site}{env}{app}{role}{seq}" -- shared shape across all schemes
-    token_length INTEGER NOT NULL DEFAULT 3, -- exact length required per token (not max)
+    name         TEXT NOT NULL UNIQUE,       -- "Server", "Network Device", "VM", "F5 Virtual Server"
+    template     TEXT,                       -- "{site}{env}{app}{role}{seq}" for generated schemes; NULL for manual
+    naming_mode  TEXT NOT NULL DEFAULT 'generated' CHECK (naming_mode IN ('generated','manual')),
+    token_length INTEGER NOT NULL DEFAULT 3, -- exact length required per token (not max); unused for manual schemes
     seq_length   INTEGER NOT NULL DEFAULT 3,
-    total_length INTEGER NOT NULL DEFAULT 15 -- matches Windows NetBIOS limit
+    total_length INTEGER NOT NULL DEFAULT 15 -- matches Windows NetBIOS limit; unused for manual schemes
 );
 
 CREATE TABLE naming_scheme_token_values (
@@ -121,7 +112,8 @@ BEGIN
     SELECT RAISE(ABORT, 'token code length must exactly match the scheme token_length');
 END;
 
--- One counter per unique site+env+app+role prefix, per scheme
+-- One counter per unique site+env+app+role prefix, per scheme. Unused for
+-- manual-mode schemes (no rows ever inserted for them).
 CREATE TABLE naming_sequences (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     scheme_id       INTEGER NOT NULL REFERENCES naming_schemes(id) ON DELETE CASCADE,
@@ -130,25 +122,47 @@ CREATE TABLE naming_sequences (
     UNIQUE (scheme_id, computed_prefix)
 );
 
-INSERT INTO naming_schemes (name, template) VALUES
-    ('Server', '{site}{env}{app}{role}{seq}'),
-    ('Network Device', '{site}{env}{app}{role}{seq}'),
-    ('VM', '{site}{env}{app}{role}{seq}');
+INSERT INTO naming_schemes (name, template, naming_mode) VALUES
+    ('Server', '{site}{env}{app}{role}{seq}', 'generated'),
+    ('Network Device', '{site}{env}{app}{role}{seq}', 'generated'),
+    ('VM', '{site}{env}{app}{role}{seq}', 'generated'),
+    ('F5 Virtual Server', NULL, 'manual');
+
+----------------------------------------------------------------------
+-- SITE+ENV -> SUBNET MAPPING
+----------------------------------------------------------------------
+-- Scoped per naming scheme (not just per site+env) so, e.g., F5 Virtual
+-- Server VIPs can draw from a dedicated LB/VIP subnet, separate from the
+-- subnet servers use for the same site+env combination.
+CREATE TABLE site_env_subnet_map (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    site_code        TEXT NOT NULL,
+    env_code         TEXT NOT NULL,
+    naming_scheme_id INTEGER NOT NULL REFERENCES naming_schemes(id) ON DELETE CASCADE,
+    subnet_id        INTEGER NOT NULL REFERENCES subnets(id) ON DELETE RESTRICT,
+    active           INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (site_code, env_code, naming_scheme_id)
+);
 
 ----------------------------------------------------------------------
 -- REQUESTS
 ----------------------------------------------------------------------
+-- app_code/role_code are nullable: required for 'generated' schemes,
+-- unused for 'manual' schemes (see trigger below). manual_name is the
+-- requester-provided name for 'manual' schemes (e.g. an F5 VIP name) --
+-- NULL for 'generated' schemes, where the name is computed instead.
 CREATE TABLE requests (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     requester_id     INTEGER NOT NULL REFERENCES users(id),
     naming_scheme_id INTEGER NOT NULL REFERENCES naming_schemes(id),
     site_code        TEXT NOT NULL,
     env_code         TEXT NOT NULL,
-    app_code         TEXT NOT NULL,
-    role_code        TEXT NOT NULL,
+    app_code         TEXT,
+    role_code        TEXT,
+    manual_name      TEXT,
     status           TEXT NOT NULL DEFAULT 'pending'
                        CHECK (status IN ('pending','approved','denied','cancelled')),
-    generated_name   TEXT,   -- set only on approval
+    generated_name   TEXT,   -- set only on approval: computed (generated) or copied from manual_name (manual)
     allocated_ip     TEXT,   -- set only on approval
     created_at       TEXT NOT NULL DEFAULT (datetime('now')),
     decided_by       INTEGER REFERENCES users(id),
@@ -158,17 +172,51 @@ CREATE TABLE requests (
 CREATE INDEX requests_requester_idx ON requests(requester_id);
 CREATE INDEX requests_status_idx ON requests(status);
 
+-- Enforce naming-mode-appropriate fields at the DB layer, same trigger
+-- pattern as token-length enforcement above: app_code/role_code required
+-- for 'generated' schemes; manual_name required for 'manual' schemes.
+CREATE TRIGGER trg_requests_naming_mode_insert
+BEFORE INSERT ON requests
+FOR EACH ROW
+WHEN
+    ((SELECT naming_mode FROM naming_schemes WHERE id = NEW.naming_scheme_id) = 'generated'
+        AND (NEW.app_code IS NULL OR NEW.role_code IS NULL))
+    OR
+    ((SELECT naming_mode FROM naming_schemes WHERE id = NEW.naming_scheme_id) = 'manual'
+        AND NEW.manual_name IS NULL)
+BEGIN
+    SELECT RAISE(ABORT, 'app_code/role_code required for generated naming schemes; manual_name required for manual naming schemes');
+END;
+
+CREATE TRIGGER trg_requests_naming_mode_update
+BEFORE UPDATE ON requests
+FOR EACH ROW
+WHEN
+    ((SELECT naming_mode FROM naming_schemes WHERE id = NEW.naming_scheme_id) = 'generated'
+        AND (NEW.app_code IS NULL OR NEW.role_code IS NULL))
+    OR
+    ((SELECT naming_mode FROM naming_schemes WHERE id = NEW.naming_scheme_id) = 'manual'
+        AND NEW.manual_name IS NULL)
+BEGIN
+    SELECT RAISE(ABORT, 'app_code/role_code required for generated naming schemes; manual_name required for manual naming schemes');
+END;
+
 ----------------------------------------------------------------------
 -- SERVERS -- general asset registry, not just IPAM-provisioned ones.
--- Auto-populated when a request is approved (request_id set) or via
--- manual admin entry / CSV bulk import (request_id NULL). This is the
--- central object that maintenance windows and other future features
--- attach to, independent of how the server came to exist.
+-- Populated four ways, tracked via `source`: request approval
+-- ('request', request_id set), manual admin entry ('manual'), CSV bulk
+-- import ('csv_import'), or admin-direct allocation ('admin_direct') --
+-- the latter three all have request_id NULL, so `source` is what
+-- distinguishes them from each other. This is the central object that
+-- maintenance windows and other future features attach to, independent
+-- of how the server came to exist. Also used for F5 Virtual Server
+-- entries (hostname holds the VIP name in that case).
 ----------------------------------------------------------------------
 CREATE TABLE servers (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     hostname    TEXT NOT NULL UNIQUE,
-    request_id  INTEGER REFERENCES requests(id),  -- NULL if manually added/imported
+    request_id  INTEGER REFERENCES requests(id),  -- set only when source = 'request'
+    source      TEXT NOT NULL CHECK (source IN ('request','manual','csv_import','admin_direct')),
     description TEXT,                              -- context, especially for non-IPAM-provisioned servers
     created_by  INTEGER REFERENCES users(id),
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
@@ -249,7 +297,6 @@ CREATE INDEX audit_log_created_idx ON audit_log(created_at);
 -- LDAP has no stored TLS toggle by design: TLS/StartTLS is hardcoded in
 -- the Go connection code, never a DB-driven option, so it can't be
 -- disabled via a config UI mistake.
-
 CREATE TABLE oidc_config (
     id            INTEGER PRIMARY KEY CHECK (id = 1),
     enabled       INTEGER NOT NULL DEFAULT 0,

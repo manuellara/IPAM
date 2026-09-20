@@ -42,9 +42,10 @@ role, and **None** means no auth required.
 
 | Type | Method | Path | Required Role | Description |
 |---|---|---|---|---|
-| PAGE | GET | `/` | Any | Dashboard, composed from sections based on the user's assigned roles |
+| PAGE | GET | `/dashboard` | Any | Nav shell (phase 1) composed from links based on the user's assigned roles; will gain data widgets (phase 2) once requests/subnets exist. **Not `/`** — that's `ServeMux`'s catch-all pattern and collides with other registrations. |
 | PAGE | GET | `/requests` | `requester`, `viewer`, or `admin` | Requester sees own requests; viewer/admin see all (read-only for viewer) |
-| PAGE | GET | `/requests/new` | `requester` | Submission form (scheme → site → env → app → role; no subnet/IP picker) |
+| PAGE | GET | `/requests/new` | `requester` | Submission form: scheme → site → env, then EITHER app+role dropdowns (generated schemes) OR a free-text "Virtual Server Name" field (manual schemes, e.g. F5 Virtual Server). No subnet/IP picker. |
+| FRAGMENT | GET | `/requests/new/fields?scheme_id=` | `requester` | Swaps the field set based on the selected scheme's `naming_mode` |
 | ACTION | POST | `/requests` | `requester` | Redirects to `/requests/:id` on success |
 | PAGE | GET | `/requests/:id` | `requester` (own), `viewer`, or `admin` | Detail view with status timeline; shows Decommission action once approved |
 | PAGE | GET | `/requests/:id/edit` | `requester` (own) | Edit form (pending: correcting a mistake; denied: resubmission) |
@@ -58,7 +59,7 @@ role, and **None** means no auth required.
 |---|---|---|---|---|
 | PAGE | GET | `/approvals` | `approver` | Pending provisioning queue |
 | PAGE | GET | `/approvals/:id` | `approver` | Detail with approve/deny actions |
-| FRAGMENT | POST | `/approvals/:id/approve` | `approver` | Atomic transaction: allocate IP, increment sequence, generate name, audit log, email requester |
+| FRAGMENT | POST | `/approvals/:id/approve` | `approver` | Atomic transaction, branches by `naming_mode`: generated (sequence lock/increment/generate) vs manual (validate + copy `manual_name`). Allocates IP, writes `servers` row, audit log, emails requester either way. |
 | FRAGMENT | POST | `/approvals/:id/deny` | `approver` | Emails requester |
 | PAGE | GET | `/decommissions` | `approver` | Pending decommission queue |
 | PAGE | GET | `/decommissions/:id` | `approver` | Detail with approve/deny actions |
@@ -74,11 +75,11 @@ role, and **None** means no auth required.
 | ACTION | POST | `/admin/subnets` | `admin` | Overlap validation enforced |
 | PAGE | GET | `/admin/subnets/:id/edit` | `admin` | |
 | ACTION | POST | `/admin/subnets/:id` | `admin` | |
-| PAGE | GET | `/admin/site-env-map` | `admin` | Site+env → subnet mappings |
+| PAGE | GET | `/admin/site-env-map` | `admin` | Site+env+**scheme** → subnet mappings (scheme-scoped, so e.g. F5 VIPs can use a dedicated subnet) |
 | PAGE | GET | `/admin/site-env-map/new` | `admin` | |
 | ACTION | POST | `/admin/site-env-map` | `admin` | |
-| PAGE | GET | `/admin/naming-schemes` | `admin` | The 3 schemes (Server, Network Device, VM) |
-| PAGE | GET | `/admin/naming-schemes/:id` | `admin` | Scheme detail + token value tables |
+| PAGE | GET | `/admin/naming-schemes` | `admin` | The 4 schemes (Server, Network Device, VM, F5 Virtual Server) |
+| PAGE | GET | `/admin/naming-schemes/:id` | `admin` | Scheme detail + token value tables + `naming_mode` |
 | PAGE | GET | `/admin/naming-schemes/:id/tokens/new` | `admin` | |
 | FRAGMENT | POST | `/admin/naming-schemes/:id/tokens` | `admin` | Exact 3-char code length enforced |
 | PAGE | GET | `/admin/users` | `admin` | List, assign roles |
@@ -87,7 +88,8 @@ role, and **None** means no auth required.
 | ACTION | POST | `/admin/allocations` | `admin` | Admin-direct allocation; also creates a `servers` row |
 | PAGE | GET | `/admin/allocations/export.csv` | `admin` | Current (non-released) allocations |
 | PAGE | GET | `/admin/auth-settings` | `admin` | View/edit `oidc_config` and `ldap_config` |
-| ACTION | POST | `/admin/auth-settings` | `admin` | Takes effect on next `/login` load, no restart |
+| ACTION | POST | `/admin/auth-settings/oidc` | `admin` | Update OIDC settings; takes effect on next `/login` load, no restart |
+| ACTION | POST | `/admin/auth-settings/ldap` | `admin` | Update LDAP settings; takes effect on next `/login` load, no restart |
 | PAGE | GET | `/admin/servers` | `admin` | All servers (any origin), search by hostname/description |
 | PAGE | GET | `/admin/servers/import` | `admin` | CSV upload form (hostname, ip_address, subnet, description) |
 | ACTION | POST | `/admin/servers/import` | `admin` | Per-row processing + per-row success/failure report; reuses subnet overlap/duplicate-IP validation |
@@ -155,14 +157,25 @@ with an API key can consume it.
   exception, not a pattern to extend.
 - **API keys are hashed, not plaintext** — unlike the OIDC/LDAP secrets
   above, we only ever need to verify a presented key, never read it back.
-  See Servers and Maintenance Windows below.
+
+## Local Admin Bootstrap
+
+- The local admin user (`id = 1`, `administrator`) and its `admin` role
+  assignment are seeded directly in the migration, not created at
+  runtime — this makes the whole thing atomic (one migration transaction)
+  and means `EnsureLocalAdmin` only ever reconciles the password hash,
+  never creates the user or assigns the role.
+- `password_hash` starts `NULL` in the seed and is set on first boot from
+  `ADMIN_PASSWORD`.
 
 ## Servers and Maintenance Windows
 
 - `servers` is a general asset registry, decoupled from the request/
-  provisioning lifecycle. Populated three ways: request approval
-  (`request_id` set), manual admin entry, or CSV bulk import (both
-  `request_id` NULL). Admin-direct allocation also creates a `servers` row.
+  provisioning lifecycle. Populated four ways, tracked via
+  `servers.source` (`request`, `manual`, `csv_import`, `admin_direct`):
+  request approval sets `source = request` and `request_id`; the other
+  three set `request_id` NULL — `source` is what distinguishes them from
+  each other, not `request_id` alone.
 - `ip_allocations.server_id` links every allocation to its server
   regardless of origin.
 - `maintenance_windows` uses RFC 5545 RRULE for recurrence. `NULL` rrule =
@@ -178,19 +191,26 @@ with an API key can consume it.
 
 ## Key Workflow Notes
 
-- Request form never shows a subnet or IP picker: site+env determines the
-  subnet via admin-configured mapping; IP is auto-assigned (next free
-  address in the subnet, transactional, skipping reserved IPs).
-- Naming: site+env+app+role dropdowns (validated against active token
-  values) generate a fixed-length hostname (15 chars, no separators) at
-  approval time, using a per-prefix sequence counter (numeric `000`-`999`,
-  then letter rollover `A00`-`Z99`, hard-blocked beyond `Z99`).
+See **`docs/workflows.md`** for the full step-by-step versions of these
+workflows (mirrors the Eraser diagrams in plain text).
+
+- Request form never shows a subnet or IP picker: site+env+**scheme**
+  determines the subnet via admin-configured, scheme-scoped mapping; IP
+  is auto-assigned (next free address in the subnet, transactional,
+  skipping reserved IPs).
+- Naming schemes have a `naming_mode`: `generated` (Server, Network
+  Device, VM) computes a fixed-length hostname (15 chars, no separators)
+  from site+env+app+role dropdowns at approval time, using a per-prefix
+  sequence counter (numeric `000`-`999`, then letter rollover `A00`-`Z99`,
+  hard-blocked beyond `Z99`). `manual` (F5 Virtual Server) skips all of
+  that — the requester provides a free-text name directly, validated for
+  uniqueness at approval time instead of computed.
 - Request lifecycle: `pending → approved | denied | cancelled`. Denied
   requests can be edited and resubmitted (status resets to `pending`)
   rather than creating a new request row.
 - Decommissioning is a separate approval flow, not a request status. On
-  approval, the IP is released back to the pool; the hostname and its
-  sequence number are never reused.
+  approval, the IP is released back to the pool; the hostname/name (and
+  its sequence number, for generated-mode) are never reused.
 - Email notifications (Resend): approver notified on new submission (both
   provisioning and decommission); requester notified on approve/deny
   decision. Both decoupled from the DB transaction.

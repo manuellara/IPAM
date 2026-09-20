@@ -8,8 +8,8 @@ package shared
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// Layout renders the oat top nav bar plus an always-collapsible sidebar (see https://oat.ink/components/#sidebar).
-func Layout(sidebar templ.Component, main templ.Component) templ.Component {
+// Footer is rendered by the authenticated page layout.
+func Footer() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -30,27 +30,7 @@ func Layout(sidebar templ.Component, main templ.Component) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div data-sidebar-layout=\"always\"><nav data-topnav><button type=\"button\" data-sidebar-toggle aria-label=\"Toggle sidebar\">☰</button> <strong>IPAM</strong></nav><aside data-sidebar>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = sidebar.Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</aside><main style=\"display: flex; flex-direction: column;\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = main.Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = Footer().Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</main></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<footer style=\"display: flex; align-items: center; justify-content: center; margin-block-start: auto; padding: 1rem; border-top: 1px solid var(--border);\"><a href=\"https://buymeacoffee.com/manuellara\" aria-label=\"Support this project\"><img src=\"/static/images/bmc-logo.svg\" alt=\"Support this project\" style=\"display: block; height: 25px; width: auto;\"></a></footer>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

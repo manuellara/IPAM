@@ -1,0 +1,16 @@
+package shared
+
+import "github.com/manuellara/ipam/internal/middleware"
+
+templ DashboardPage(principal middleware.Principal) {
+	@Boilerplate("IPAM — Dashboard") {
+		@Layout(Sidebar(principal), DashboardMain(principal))
+	}
+}
+
+templ DashboardMain(principal middleware.Principal) {
+	<div class="container">
+		<h1>Welcome, { principal.User.DisplayName }</h1>
+		<p>Welcome to IPAM.</p>
+	</div>
+}

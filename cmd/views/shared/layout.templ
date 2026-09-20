@@ -8,12 +8,11 @@ templ Layout(sidebar templ.Component, main templ.Component) {
 			<strong>IPAM</strong>
 		</nav>
 		<aside data-sidebar>
-			<nav>
-				@sidebar
-			</nav>
+			@sidebar
 		</aside>
-		<main>
+		<main style="display: flex; flex-direction: column;">
 			@main
+			@Footer()
 		</main>
 	</div>
 }

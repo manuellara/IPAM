@@ -44,9 +44,16 @@ DROP TABLE IF EXISTS servers;
 ----------------------------------------------------------------------
 -- DROP: REQUESTS
 ----------------------------------------------------------------------
+DROP TRIGGER IF EXISTS trg_requests_naming_mode_update;
+DROP TRIGGER IF EXISTS trg_requests_naming_mode_insert;
 DROP INDEX IF EXISTS requests_status_idx;
 DROP INDEX IF EXISTS requests_requester_idx;
 DROP TABLE IF EXISTS requests;
+
+----------------------------------------------------------------------
+-- DROP: SITE+ENV -> SUBNET MAPPING
+----------------------------------------------------------------------
+DROP TABLE IF EXISTS site_env_subnet_map;
 
 ----------------------------------------------------------------------
 -- DROP: NAMING SCHEMES, TOKEN VALUES, SEQUENCES
@@ -56,11 +63,6 @@ DROP TRIGGER IF EXISTS trg_token_value_length_insert;
 DROP TABLE IF EXISTS naming_sequences;
 DROP TABLE IF EXISTS naming_scheme_token_values;
 DROP TABLE IF EXISTS naming_schemes;
-
-----------------------------------------------------------------------
--- DROP: SITE+ENV -> SUBNET MAPPING
-----------------------------------------------------------------------
-DROP TABLE IF EXISTS site_env_subnet_map;
 
 ----------------------------------------------------------------------
 -- DROP: SUBNETS + RESERVED IPS

@@ -1,0 +1,68 @@
+package shared
+
+import (
+	"github.com/manuellara/ipam/internal/middleware"
+	"strings"
+)
+
+templ Sidebar(principal middleware.Principal) {
+	<nav>
+		<details open>
+			<summary>Work</summary>
+			<ul>
+				<li><a href="/dashboard">Dashboard</a></li>
+				if principal.HasAnyRole(middleware.RoleRequester, middleware.RoleViewer, middleware.RoleAdmin) {
+					<li><a href="/requests">My Requests</a></li>
+				}
+				if principal.HasAnyRole(middleware.RoleApprover, middleware.RoleAdmin) {
+					<li><a href="/approvals">Approvals</a></li>
+					<li><a href="/decommissions">Decommissions</a></li>
+				}
+			</ul>
+		</details>
+		if principal.HasAnyRole(middleware.RoleAdmin, middleware.RoleViewer) {
+			<details open>
+				<summary>Estate</summary>
+				<ul>
+					<li><a href="/admin/subnets">Subnets</a></li>
+					if principal.HasAnyRole(middleware.RoleAdmin) {
+						<li><a href="/admin/site-env-map">Sites/Env Map</a></li>
+						<li><a href="/admin/servers">Servers</a></li>
+						<li><a href="/admin/maintenance-windows">Maintenance Windows</a></li>
+					}
+				</ul>
+			</details>
+		}
+		if principal.HasAnyRole(middleware.RoleAdmin) {
+			<details open>
+				<summary>Configuration</summary>
+				<ul>
+					<li><a href="/admin/naming-schemes">Naming Schemes</a></li>
+					<li><a href="/admin/users">Users and Roles</a></li>
+					<li><a href="/admin/api-keys">API Keys</a></li>
+					<li><a href="/admin/auth-settings">Auth Settings</a></li>
+				</ul>
+			</details>
+		}
+		if principal.HasAnyRole(middleware.RoleAdmin, middleware.RoleViewer) {
+			<details open>
+				<summary>Audit</summary>
+				<ul>
+					<li><a href="/admin/audit-log">Audit Logs</a></li>
+				</ul>
+			</details>
+		}
+	</nav>
+	<footer>
+		<strong>{ principal.User.DisplayName }</strong>
+		<div>{ roleNames(principal.Roles) }</div>
+	</footer>
+}
+
+func roleNames(roles []middleware.Role) string {
+	names := make([]string, len(roles))
+	for index, role := range roles {
+		names[index] = string(role)
+	}
+	return strings.Join(names, ", ")
+}

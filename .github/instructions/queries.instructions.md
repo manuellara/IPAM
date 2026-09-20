@@ -9,10 +9,11 @@ applyTo: "internal/db/queries/**"
 schema files are covered by `migrations.instructions.md`.)
 
 - Split by domain, one file per area: `users.sql`, `subnets.sql`,
-  `requests.sql`, `naming.sql`, `decommissions.sql`, `audit.sql`, etc.
-  sqlc compiles every file in this directory into a single generated
-  package regardless of the split — this is purely for readability, so
-  don't consolidate back into one file.
+  `requests.sql`, `naming.sql`, `decommissions.sql`, `audit.sql`,
+  `servers.sql`, `maintenance.sql`, `api_keys.sql`, etc. sqlc compiles
+  every file in this directory into a single generated package regardless
+  of the split — this is purely for readability, so don't consolidate back
+  into one file.
 - Target the `sqlite` engine (set in `sqlc.yaml`) — don't write
   PostgreSQL-only syntax (e.g. `RETURNING` works in modern SQLite, but
   avoid Postgres-only functions or `::type` casts).

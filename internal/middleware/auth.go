@@ -52,7 +52,7 @@ func GetAuthFromContext(ctx context.Context) (Principal, bool) {
 // "//evil.com" (a protocol-relative URL) being used as a redirect target.
 func SafeRedirectPath(path string) string {
 	if path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
-		return "/"
+		return "/dashboard"
 	}
 	return path
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/manuellara/ipam/internal/db"
 )
 
-func TestNewPrincipalBuildsRoleSet(t *testing.T) {
+func TestNewPrincipalBuildsRoleSlice(t *testing.T) {
 	principal := newPrincipal(
 		db.User{ID: 1, DisplayName: "Current Name", Active: 1},
 		[]string{"admin", "viewer"},
@@ -126,11 +126,7 @@ func TestRequireAnyRole(t *testing.T) {
 
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
 			if test.assignedRoles != nil {
-				roles := make(map[Role]struct{}, len(test.assignedRoles))
-				for _, role := range test.assignedRoles {
-					roles[role] = struct{}{}
-				}
-				request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, Principal{Roles: roles}))
+				request = request.WithContext(context.WithValue(request.Context(), authContextKey{}, Principal{Roles: test.assignedRoles}))
 			}
 
 			response := httptest.NewRecorder()

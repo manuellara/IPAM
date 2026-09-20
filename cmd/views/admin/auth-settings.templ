@@ -1,0 +1,114 @@
+package admin
+
+import (
+	"fmt"
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/db"
+	"github.com/manuellara/ipam/internal/middleware"
+)
+
+templ AuthSettingsPage(principal middleware.Principal, oidcConfig db.OidcConfig, ldapConfig db.LdapConfig) {
+	@shared.Boilerplate("IPAM — Auth Settings") {
+		@shared.Layout(shared.Sidebar(principal), AuthSettingsMain(principal, oidcConfig, ldapConfig))
+	}
+}
+
+templ AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig, ldapConfig db.LdapConfig) {
+	<div class="container">
+		<header style="margin-bottom: 1.5rem;">
+			<h1 style="margin-bottom: 0;">Authentication settings</h1>
+			<p style="margin-top: 0; opacity: 0.72;">Configure the sign-in methods available to your IPAM users.</p>
+		</header>
+		<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)); gap: 1.5rem; align-items: start;">
+			<section>
+				<h2 style="margin-bottom: 0;">Single sign-on</h2>
+				<p style="margin-top: 0; opacity: 0.72;">Connect IPAM to an OpenID Connect identity provider.</p>
+				<form method="POST" action="/admin/auth-settings/oidc">
+					<fieldset>
+						<legend>OIDC provider</legend>
+						<label>
+							<input type="checkbox" name="enabled" value="1" if oidcConfig.Enabled != 0 { checked }/>
+							Enable OIDC sign-in
+						</label>
+						<label for="oidc-issuer-url">Issuer URL</label>
+						if oidcConfig.IssuerUrl != nil {
+							<input type="url" id="oidc-issuer-url" name="issuer_url" value={ *oidcConfig.IssuerUrl } placeholder="https://login.example.com" autocomplete="url"/>
+						} else {
+							<input type="url" id="oidc-issuer-url" name="issuer_url" placeholder="https://login.example.com" autocomplete="url"/>
+						}
+						<label for="oidc-client-id">Client ID</label>
+						if oidcConfig.ClientID != nil {
+							<input type="text" id="oidc-client-id" name="client_id" value={ *oidcConfig.ClientID } autocomplete="off"/>
+						} else {
+							<input type="text" id="oidc-client-id" name="client_id" autocomplete="off"/>
+						}
+						<label for="oidc-client-secret">Client secret</label>
+						if oidcConfig.ClientSecret != nil {
+							<input type="password" id="oidc-client-secret" name="client_secret" placeholder="Leave blank to keep current password" autocomplete="new-password"/>
+						} else {
+							<input type="password" id="oidc-client-secret" name="client_secret" placeholder="Enter client secret" autocomplete="new-password"/>
+						}
+						<label for="oidc-redirect-url">Redirect URL</label>
+						if oidcConfig.RedirectUrl != nil {
+							<input type="url" id="oidc-redirect-url" name="redirect_url" value={ *oidcConfig.RedirectUrl } placeholder="https://ipam.example.com/auth/oidc/callback" autocomplete="url"/>
+						} else {
+							<input type="url" id="oidc-redirect-url" name="redirect_url" placeholder="https://ipam.example.com/auth/oidc/callback" autocomplete="url"/>
+						}
+						<button type="submit" style="margin-top: 1rem;">Save OIDC settings</button>
+					</fieldset>
+				</form>
+			</section>
+			<section>
+				<h2 style="margin-bottom: 0;">Directory sign-in</h2>
+				<p style="margin-top: 0; opacity: 0.72;">Connect IPAM to an LDAP or Active Directory server.</p>
+				<form method="POST" action="/admin/auth-settings/ldap">
+					<fieldset>
+						<legend>LDAP provider</legend>
+						<label>
+							<input type="checkbox" name="enabled" value="1" if ldapConfig.Enabled != 0 { checked }/>
+							Enable LDAP sign-in
+						</label>
+						<label for="ldap-server">Server</label>
+						if ldapConfig.Server != nil {
+							<input type="text" id="ldap-server" name="server" value={ *ldapConfig.Server } placeholder="ldap.example.com" autocomplete="url"/>
+						} else {
+							<input type="text" id="ldap-server" name="server" placeholder="ldap.example.com" autocomplete="url"/>
+						}
+						<label for="ldap-port">Port</label>
+						if ldapConfig.Port != nil {
+							<input type="number" id="ldap-port" name="port" value={ fmt.Sprint(*ldapConfig.Port) } min="1" max="65535" inputmode="numeric"/>
+						} else {
+							<input type="number" id="ldap-port" name="port" placeholder="636" min="1" max="65535" inputmode="numeric"/>
+						}
+						<label for="ldap-base-dn">Base DN</label>
+						if ldapConfig.BaseDn != nil {
+							<input type="text" id="ldap-base-dn" name="base_dn" value={ *ldapConfig.BaseDn } placeholder="dc=example,dc=com" autocomplete="off"/>
+						} else {
+							<input type="text" id="ldap-base-dn" name="base_dn" placeholder="dc=example,dc=com" autocomplete="off"/>
+						}
+						<label for="ldap-bind-dn">Bind DN</label>
+						if ldapConfig.BindDn != nil {
+							<input type="text" id="ldap-bind-dn" name="bind_dn" value={ *ldapConfig.BindDn } autocomplete="off"/>
+						} else {
+							<input type="text" id="ldap-bind-dn" name="bind_dn" autocomplete="off"/>
+						}
+						<label for="ldap-bind-password">Bind password</label>
+						if ldapConfig.BindPassword != nil {
+							<input type="password" id="ldap-bind-password" name="bind_password" placeholder="Leave blank to keep current password" autocomplete="new-password"/>
+						} else {
+							<input type="password" id="ldap-bind-password" name="bind_password" placeholder="Enter bind password" autocomplete="new-password"/>
+						}
+						<label for="ldap-user-filter">User filter</label>
+						if ldapConfig.UserFilter != nil {
+							<input type="text" id="ldap-user-filter" name="user_filter" value={ *ldapConfig.UserFilter } autocomplete="off"/>
+						} else {
+							<input type="text" id="ldap-user-filter" name="user_filter" placeholder="(uid={{username}})" autocomplete="off"/>
+						}
+						<button type="submit" style="margin-top: 1rem;">Save LDAP settings</button>
+					</fieldset>
+				</form>
+			</section>
+		</div>
+		<p style="text-align: center;"><small>Local administrator sign-in remains available as the break-glass access path.</small></p>
+	</div>
+}

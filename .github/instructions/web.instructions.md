@@ -28,15 +28,18 @@ code don't drift.
 - Middleware is assembled per-route-group via `middleware.MiddlewareStack`,
   not wrapped globally — see the repo-wide "Middleware architecture"
   section. `/healthz` specifically has no stack at all; don't add session,
-  CSRF, or logging middleware to it even as a "just in case."
+  CSRF, or logging middleware to it even as a "just in case." `/api/*`
+  routes use a separate API-key auth mechanism, not this stack either.
 - Request submission forms never include a subnet or IP picker. If you're
   writing a form that touches `requests`, the only user-facing fields are:
   naming scheme, site, env, app, role. Subnet and IP are resolved
   server-side.
-- Dashboard sections (`GET /`) are composed per the logged-in user's roles,
-  not per a single "current role" — a user with multiple roles sees
-  multiple sections stacked. Don't gate the dashboard behind a single role
-  switch.
+- The dashboard route is `GET /dashboard`, not `GET /`. A bare `/` pattern
+  on `net/http.ServeMux` is the catch-all fallback and will collide with
+  other registrations — don't register anything at a literal `/`.
+- Dashboard sections are composed per the logged-in user's roles, not per
+  a single "current role" — a user with multiple roles sees multiple
+  sections stacked. Don't gate the dashboard behind a single role switch.
 - Admin token-value edits (naming scheme codes) should deactivate, not hard
   delete — historical requests reference these codes and must keep
   rendering correctly.

@@ -74,12 +74,13 @@ type MaintenanceWindowServer struct {
 }
 
 type NamingScheme struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Template    string `json:"template"`
-	TokenLength int64  `json:"token_length"`
-	SeqLength   int64  `json:"seq_length"`
-	TotalLength int64  `json:"total_length"`
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Template    *string `json:"template"`
+	NamingMode  string  `json:"naming_mode"`
+	TokenLength int64   `json:"token_length"`
+	SeqLength   int64   `json:"seq_length"`
+	TotalLength int64   `json:"total_length"`
 }
 
 type NamingSchemeTokenValue struct {
@@ -113,8 +114,9 @@ type Request struct {
 	NamingSchemeID int64   `json:"naming_scheme_id"`
 	SiteCode       string  `json:"site_code"`
 	EnvCode        string  `json:"env_code"`
-	AppCode        string  `json:"app_code"`
-	RoleCode       string  `json:"role_code"`
+	AppCode        *string `json:"app_code"`
+	RoleCode       *string `json:"role_code"`
+	ManualName     *string `json:"manual_name"`
 	Status         string  `json:"status"`
 	GeneratedName  *string `json:"generated_name"`
 	AllocatedIp    *string `json:"allocated_ip"`
@@ -132,6 +134,7 @@ type Server struct {
 	ID          int64   `json:"id"`
 	Hostname    string  `json:"hostname"`
 	RequestID   *int64  `json:"request_id"`
+	Source      string  `json:"source"`
 	Description *string `json:"description"`
 	CreatedBy   *int64  `json:"created_by"`
 	CreatedAt   string  `json:"created_at"`
@@ -144,11 +147,12 @@ type Session struct {
 }
 
 type SiteEnvSubnetMap struct {
-	ID       int64  `json:"id"`
-	SiteCode string `json:"site_code"`
-	EnvCode  string `json:"env_code"`
-	SubnetID int64  `json:"subnet_id"`
-	Active   int64  `json:"active"`
+	ID             int64  `json:"id"`
+	SiteCode       string `json:"site_code"`
+	EnvCode        string `json:"env_code"`
+	NamingSchemeID int64  `json:"naming_scheme_id"`
+	SubnetID       int64  `json:"subnet_id"`
+	Active         int64  `json:"active"`
 }
 
 type Subnet struct {

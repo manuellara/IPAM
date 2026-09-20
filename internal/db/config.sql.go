@@ -46,3 +46,62 @@ func (q *Queries) GetOIDCConfig(ctx context.Context) (OidcConfig, error) {
 	)
 	return i, err
 }
+
+const updateLDAPConfig = `-- name: UpdateLDAPConfig :exec
+UPDATE ldap_config
+SET enabled = ?1, server = ?2, port = ?3,
+	base_dn = ?4, bind_dn = ?5,
+	bind_password = COALESCE(NULLIF(?6, ''), bind_password),
+	user_filter = ?7
+WHERE id = 1
+`
+
+type UpdateLDAPConfigParams struct {
+	Enabled      int64       `json:"enabled"`
+	Server       *string     `json:"server"`
+	Port         *int64      `json:"port"`
+	BaseDn       *string     `json:"base_dn"`
+	BindDn       *string     `json:"bind_dn"`
+	BindPassword interface{} `json:"bind_password"`
+	UserFilter   *string     `json:"user_filter"`
+}
+
+func (q *Queries) UpdateLDAPConfig(ctx context.Context, arg UpdateLDAPConfigParams) error {
+	_, err := q.db.ExecContext(ctx, updateLDAPConfig,
+		arg.Enabled,
+		arg.Server,
+		arg.Port,
+		arg.BaseDn,
+		arg.BindDn,
+		arg.BindPassword,
+		arg.UserFilter,
+	)
+	return err
+}
+
+const updateOIDCConfig = `-- name: UpdateOIDCConfig :exec
+UPDATE oidc_config
+SET enabled = ?1, issuer_url = ?2, client_id = ?3,
+	client_secret = COALESCE(NULLIF(?4, ''), client_secret),
+	redirect_url = ?5
+WHERE id = 1
+`
+
+type UpdateOIDCConfigParams struct {
+	Enabled      int64       `json:"enabled"`
+	IssuerUrl    *string     `json:"issuer_url"`
+	ClientID     *string     `json:"client_id"`
+	ClientSecret interface{} `json:"client_secret"`
+	RedirectUrl  *string     `json:"redirect_url"`
+}
+
+func (q *Queries) UpdateOIDCConfig(ctx context.Context, arg UpdateOIDCConfigParams) error {
+	_, err := q.db.ExecContext(ctx, updateOIDCConfig,
+		arg.Enabled,
+		arg.IssuerUrl,
+		arg.ClientID,
+		arg.ClientSecret,
+		arg.RedirectUrl,
+	)
+	return err
+}

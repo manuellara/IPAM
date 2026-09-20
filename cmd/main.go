@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	admincontroller "github.com/manuellara/ipam/cmd/controllers/admin"
 	"github.com/manuellara/ipam/cmd/controllers/shared"
 	"github.com/manuellara/ipam/internal/auth"
 	"github.com/manuellara/ipam/internal/config"
@@ -21,7 +22,7 @@ import (
 func main() {
 	// Initialize structured logger
 	logging.NewSLogger()
-	
+
 	// Load environment variables from the .env file if present
 	if err := config.Load(""); err != nil {
 		slog.Error("environment loading failed", "error", err)
@@ -67,6 +68,8 @@ func main() {
 
 	// Initialize controllers
 	loginController := shared.NewLoginController(sqlcService, sessionManager)
+	dashboardController := shared.NewDashboardController(sqlcService, sessionManager)
+	authSettingsController := admincontroller.NewAuthSettingsController(sqlcService, sessionManager)
 
 	// Initialize the HTTP request multiplexer
 	mux := http.NewServeMux()
@@ -80,6 +83,8 @@ func main() {
 
 	// Register routes with their respective handlers and middleware
 	loginController.RegisterLoginRoutes(mux, publicMiddleware, authenticatedMiddleware)
+	dashboardController.RegisterDashboardRoutes(mux, authenticatedMiddleware)
+	authSettingsController.RegisterAuthSettingsRoutes(mux, authenticatedMiddleware)
 
 	// Run the HTTP server with session management
 	if err := http.ListenAndServe(":8080", middleware.RecoverMiddleware(mux)); err != nil {

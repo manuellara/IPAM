@@ -22,13 +22,13 @@ const (
 
 type Principal struct {
 	User  db.User
-	Roles map[Role]struct{}
+	Roles []Role
 }
 
 func newPrincipal(user db.User, roleNames []string) Principal {
-	roles := make(map[Role]struct{}, len(roleNames))
-	for _, roleName := range roleNames {
-		roles[Role(roleName)] = struct{}{}
+	roles := make([]Role, len(roleNames))
+	for index, roleName := range roleNames {
+		roles[index] = Role(roleName)
 	}
 
 	return Principal{User: user, Roles: roles}
@@ -36,9 +36,11 @@ func newPrincipal(user db.User, roleNames []string) Principal {
 
 // HasAnyRole checks if the principal has at least one of the specified roles.
 func (p Principal) HasAnyRole(roles ...Role) bool {
-	for _, role := range roles {
-		if _, ok := p.Roles[role]; ok {
-			return true
+	for _, requiredRole := range roles {
+		for _, assignedRole := range p.Roles {
+			if assignedRole == requiredRole {
+				return true
+			}
 		}
 	}
 
