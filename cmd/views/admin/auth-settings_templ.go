@@ -352,7 +352,7 @@ func AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig, 
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<input type=\"text\" id=\"ldap-user-filter\" name=\"user_filter\" placeholder=\"(uid={{username}})\" autocomplete=\"off\"> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<input type=\"text\" id=\"ldap-user-filter\" name=\"user_filter\" placeholder=\"(uid=%s)\" autocomplete=\"off\"> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

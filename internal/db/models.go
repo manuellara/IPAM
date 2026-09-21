@@ -55,6 +55,7 @@ type LdapConfig struct {
 	BindDn       *string `json:"bind_dn"`
 	BindPassword *string `json:"bind_password"`
 	UserFilter   *string `json:"user_filter"`
+	CaCert       *string `json:"ca_cert"`
 }
 
 type MaintenanceWindow struct {
@@ -177,6 +178,7 @@ type User struct {
 	Email        *string `json:"email"`
 	AuthSource   string  `json:"auth_source"`
 	OidcSubject  *string `json:"oidc_subject"`
+	LdapDn       *string `json:"ldap_dn"`
 	PasswordHash *string `json:"password_hash"`
 	Active       int64   `json:"active"`
 	CreatedAt    string  `json:"created_at"`

@@ -19,10 +19,39 @@ func (q *Queries) AssignViewerRole(ctx context.Context, userID int64) error {
 	return err
 }
 
+const createLDAPUser = `-- name: CreateLDAPUser :one
+INSERT INTO users (display_name, email, auth_source, ldap_dn, active)
+VALUES (?1, ?2, 'ldap', ?3, 1)
+RETURNING id, display_name, email, auth_source, oidc_subject, ldap_dn, password_hash, active, created_at
+`
+
+type CreateLDAPUserParams struct {
+	DisplayName string  `json:"display_name"`
+	Email       *string `json:"email"`
+	LdapDn      *string `json:"ldap_dn"`
+}
+
+func (q *Queries) CreateLDAPUser(ctx context.Context, arg CreateLDAPUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createLDAPUser, arg.DisplayName, arg.Email, arg.LdapDn)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Email,
+		&i.AuthSource,
+		&i.OidcSubject,
+		&i.LdapDn,
+		&i.PasswordHash,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createLocalAdminUser = `-- name: CreateLocalAdminUser :one
 INSERT INTO users (display_name, auth_source, password_hash, active)
 VALUES ('administrator', 'local', ?1, 1)
-RETURNING id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at
+RETURNING id, display_name, email, auth_source, oidc_subject, ldap_dn, password_hash, active, created_at
 `
 
 func (q *Queries) CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error) {
@@ -34,6 +63,7 @@ func (q *Queries) CreateLocalAdminUser(ctx context.Context, passwordHash *string
 		&i.Email,
 		&i.AuthSource,
 		&i.OidcSubject,
+		&i.LdapDn,
 		&i.PasswordHash,
 		&i.Active,
 		&i.CreatedAt,
@@ -44,7 +74,7 @@ func (q *Queries) CreateLocalAdminUser(ctx context.Context, passwordHash *string
 const createOIDCUser = `-- name: CreateOIDCUser :one
 INSERT INTO users (display_name, email, auth_source, oidc_subject, active)
 VALUES (?1, ?2, 'oidc', ?3, 1)
-RETURNING id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at
+RETURNING id, display_name, email, auth_source, oidc_subject, ldap_dn, password_hash, active, created_at
 `
 
 type CreateOIDCUserParams struct {
@@ -62,6 +92,30 @@ func (q *Queries) CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) 
 		&i.Email,
 		&i.AuthSource,
 		&i.OidcSubject,
+		&i.LdapDn,
+		&i.PasswordHash,
+		&i.Active,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLDAPUser = `-- name: GetLDAPUser :one
+SELECT id, display_name, email, auth_source, oidc_subject, ldap_dn, password_hash, active, created_at FROM users
+WHERE auth_source = 'ldap' AND ldap_dn = ?1
+LIMIT 1
+`
+
+func (q *Queries) GetLDAPUser(ctx context.Context, ldapDn *string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getLDAPUser, ldapDn)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Email,
+		&i.AuthSource,
+		&i.OidcSubject,
+		&i.LdapDn,
 		&i.PasswordHash,
 		&i.Active,
 		&i.CreatedAt,
@@ -70,7 +124,7 @@ func (q *Queries) CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) 
 }
 
 const getLocalAdminUser = `-- name: GetLocalAdminUser :one
-SELECT id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at FROM users WHERE auth_source = 'local' LIMIT 1
+SELECT id, display_name, email, auth_source, oidc_subject, ldap_dn, password_hash, active, created_at FROM users WHERE auth_source = 'local' LIMIT 1
 `
 
 func (q *Queries) GetLocalAdminUser(ctx context.Context) (User, error) {
@@ -82,6 +136,7 @@ func (q *Queries) GetLocalAdminUser(ctx context.Context) (User, error) {
 		&i.Email,
 		&i.AuthSource,
 		&i.OidcSubject,
+		&i.LdapDn,
 		&i.PasswordHash,
 		&i.Active,
 		&i.CreatedAt,
@@ -90,7 +145,7 @@ func (q *Queries) GetLocalAdminUser(ctx context.Context) (User, error) {
 }
 
 const getOIDCUser = `-- name: GetOIDCUser :one
-SELECT id, display_name, email, auth_source, oidc_subject, password_hash, active, created_at FROM users
+SELECT id, display_name, email, auth_source, oidc_subject, ldap_dn, password_hash, active, created_at FROM users
 WHERE auth_source = 'oidc' AND oidc_subject = ?1
 LIMIT 1
 `
@@ -104,6 +159,7 @@ func (q *Queries) GetOIDCUser(ctx context.Context, oidcSubject *string) (User, e
 		&i.Email,
 		&i.AuthSource,
 		&i.OidcSubject,
+		&i.LdapDn,
 		&i.PasswordHash,
 		&i.Active,
 		&i.CreatedAt,

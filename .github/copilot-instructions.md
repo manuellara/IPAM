@@ -78,15 +78,37 @@ consumable by external integrations.
    no redeploy needed. Only shown on the login page if `enabled = 1`.
 3. **LDAP/AD** — direct use of `go-ldap/ldap` (NOT a wrapper package like
    `go-ad-auth`). Configuration (`server`, `port`, `base_dn`, `bind_dn`,
-   `bind_password`, `user_filter`) and an `enabled` flag live in the
-   `ldap_config` table, same admin-UI pattern as OIDC. **TLS/StartTLS is
-   hardcoded in the Go connection code, never a DB-driven or configurable
-   option** — there is deliberately no `use_tls` column, so an admin can
-   never misconfigure their way into a plaintext bind through the settings
-   UI.
+   `bind_password`, `user_filter`, `ca_cert`) and an `enabled` flag live in
+   the `ldap_config` table, same admin-UI pattern as OIDC. **TLS/StartTLS
+   is hardcoded in the Go connection code, never a DB-driven or
+   configurable option** — there is deliberately no `use_tls` column, so
+   an admin can never misconfigure their way into a plaintext bind through
+   the settings UI.
+   - `ca_cert` is a PEM-encoded CA certificate, admin-pasteable, used to
+     build a custom `x509.CertPool` for the LDAPS TLS connection instead
+     of relying on the system default trust store. This exists because
+     real AD/LDAP servers are almost always signed by an org's internal
+     enterprise CA, not a publicly trusted one — without it,
+     `AuthenticateLDAP`'s TLS verification would fail against most real
+     deployments unless the container/host's OS trust store was
+     separately configured (real operational friction for self-hosters
+     with an internal CA). `NULL` means fall back to the system default
+     trust store.
+   - **`ca_cert` is NOT a secret** — a CA certificate is public
+     information by design. It's stored alongside `bind_password` in the
+     same table, but don't treat it with the same "why is this
+     plaintext" caution; it doesn't need to be. Never confuse the two
+     fields' sensitivity.
+   - `users.ldap_dn` (parallel to `users.oidc_subject` for OIDC) is the
+     stable identifier a returning LDAP user is matched against —
+     populated from the entry's DN returned by the search-then-bind flow,
+     not from the `uid`/`sAMAccountName` used in `user_filter` (that's
+     only used to *find* the entry during the directory search, not to
+     key the local `users` row).
 
-Both `oidc_config` and `ldap_config` secrets are plaintext — see the
-Backups note above.
+Both `oidc_config` and `ldap_config` secrets (`client_secret`,
+`bind_password` — NOT `ca_cert`) are plaintext — see the Backups note
+above.
 
 OIDC and LDAP auto-provision a `users` row on first successful login and
 auto-assign the **`viewer`** role (read-only access to all requests,
@@ -331,3 +353,9 @@ Naming schemes have a `naming_mode`: `generated` or `manual`.
 - Don't infer a server's origin from `request_id IS NULL` alone — use
   `servers.source` directly. `request_id NULL` is ambiguous between
   manual entry, CSV import, and admin-direct allocation.
+- Don't treat `ldap_config.ca_cert` as a secret (mask it in a form,
+  exclude it from a "safe to display" list, etc.) — it's a public CA
+  certificate, unlike `bind_password` in the same table.
+- Don't populate `users.ldap_dn` from the submitted username or the
+  `user_filter` match value — use the DN the directory search actually
+  returned for that entry.

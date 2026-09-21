@@ -26,6 +26,16 @@ INSERT INTO users (display_name, email, auth_source, oidc_subject, active)
 VALUES (sqlc.arg(display_name), sqlc.arg(email), 'oidc', sqlc.arg(oidc_subject), 1)
 RETURNING *;
 
+-- name: GetLDAPUser :one
+SELECT * FROM users
+WHERE auth_source = 'ldap' AND ldap_dn = sqlc.arg(ldap_dn)
+LIMIT 1;
+
+-- name: CreateLDAPUser :one
+INSERT INTO users (display_name, email, auth_source, ldap_dn, active)
+VALUES (sqlc.arg(display_name), sqlc.arg(email), 'ldap', sqlc.arg(ldap_dn), 1)
+RETURNING *;
+
 -- name: AssignViewerRole :exec
 INSERT OR IGNORE INTO user_roles (user_id, role_id)
 SELECT sqlc.arg(user_id), id FROM roles WHERE name = 'viewer';

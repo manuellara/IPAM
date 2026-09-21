@@ -34,7 +34,7 @@ func Sidebar(principal middleware.Principal) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav><details open><summary>Work</summary><ul><li><a href=\"/dashboard\">Dashboard</a></li>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav><strong style=\"text-transform: uppercase;\">Work</strong><ul><li><a href=\"/dashboard\">Dashboard</a></li>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -50,12 +50,12 @@ func Sidebar(principal middleware.Principal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</ul></details> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</ul>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if principal.HasAnyRole(middleware.RoleAdmin, middleware.RoleViewer) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<details open><summary>Estate</summary><ul><li><a href=\"/admin/subnets\">Subnets</a></li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<strong style=\"display: block; margin-block-start: var(--space-3); text-transform: uppercase;\">Estate</strong><ul><li><a href=\"/admin/subnets\">Subnets</a></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -65,19 +65,19 @@ func Sidebar(principal middleware.Principal) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</ul></details> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</ul>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if principal.HasAnyRole(middleware.RoleAdmin) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<details open><summary>Configuration</summary><ul><li><a href=\"/admin/naming-schemes\">Naming Schemes</a></li><li><a href=\"/admin/users\">Users and Roles</a></li><li><a href=\"/admin/api-keys\">API Keys</a></li><li><a href=\"/admin/auth-settings\">Auth Settings</a></li></ul></details> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<strong style=\"display: block; margin-block-start: var(--space-3); text-transform: uppercase;\">Configuration</strong><ul><li><a href=\"/admin/naming-schemes\">Naming Schemes</a></li><li><a href=\"/admin/users\">Users and Roles</a></li><li><a href=\"/admin/api-keys\">API Keys</a></li><li><a href=\"/admin/auth-settings\">Auth Settings</a></li></ul>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if principal.HasAnyRole(middleware.RoleAdmin, middleware.RoleViewer) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<details open><summary>Audit</summary><ul><li><a href=\"/admin/audit-log\">Audit Logs</a></li></ul></details>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<strong style=\"display: block; margin-block-start: var(--space-3); text-transform: uppercase;\">Audit</strong><ul><li><a href=\"/admin/audit-log\">Audit Logs</a></li></ul>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -89,7 +89,7 @@ func Sidebar(principal middleware.Principal) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(principal.User.DisplayName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 57, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 49, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -102,7 +102,7 @@ func Sidebar(principal middleware.Principal) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(roleNames(principal.Roles))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 58, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 50, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {

@@ -115,9 +115,30 @@ the same `users`/`user_roles` tables:
   - Every outcome (invalid state, IdP error, provider unreachable, token
     verification failure, provisioning failure, role lookup failure,
     session renewal failure, success) is audit-logged — not just success.
-- **LDAP/AD** — config lives in `ldap_config`, same pattern. TLS/StartTLS
-  is hardcoded in the Go connection code, never a stored/configurable
-  option — there is no `use_tls` column, by design.
+- **LDAP/AD** — config lives in `ldap_config`. TLS/StartTLS is hardcoded
+  in the Go connection code, never a stored/configurable option — there
+  is no `use_tls` column, by design. Full flow (search-then-bind):
+  1. Connect over implicit TLS (`ldaps://`) to `server:port`.
+  2. Build the trust pool from `ldap_config.ca_cert` if set (a
+     PEM-encoded internal/enterprise CA cert — common for real AD, which
+     is almost never signed by a publicly trusted CA); fall back to the
+     system default trust store if `ca_cert` is `NULL`.
+  3. Bind as the service account (`bind_dn`/`bind_password`).
+  4. Search `base_dn` using `user_filter` (e.g. `(uid=%s)` or
+     `(sAMAccountName=%s)` for AD) with the submitted username
+     **escaped** via `ldap.EscapeFilter` — never interpolate the raw
+     username into the filter string, to prevent LDAP injection.
+  5. Re-bind as the found entry's DN with the submitted password to
+     verify it.
+  6. Look up `users` by `ldap_dn` (the entry's DN, not the `uid`/
+     `sAMAccountName` used in step 4 — that value only locates the entry,
+     it isn't the stable local identifier). If not found: create the user
+     and assign `viewer` inside a single transaction (`db.WithTx`), same
+     atomicity requirement as OIDC provisioning.
+  7. Renew session, set principal, redirect.
+  - Every outcome is audit-logged, same as OIDC.
+  - `ca_cert` is NOT treated as a secret (a CA cert is public information)
+    — unlike `bind_password` in the same table.
 - OIDC and LDAP both auto-provision a `users` row on first successful
   login and auto-assign the **`viewer`** role (read-only access to all
   requests, subnets, and audit log) — chosen over no-roles-at-all to avoid

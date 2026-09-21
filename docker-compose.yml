@@ -1,0 +1,15 @@
+services:
+  openldap:
+    image: vegardit/openldap:latest
+    environment:
+      LDAP_INIT_ORG_DN: "DC=ipam,DC=test"
+      LDAP_INIT_ORG_NAME: "IPAM Test"
+      LDAP_INIT_ROOT_USER_PW: "admin"
+    ports:
+      - "389:389"
+      - "636:636"
+    volumes:
+      - ./test/ldap-bootstrap/certs/server.crt:/run/secrets/ldap/server.crt:ro
+      - ./test/ldap-bootstrap/certs/server.key:/run/secrets/ldap/server.key:ro
+      - ./test/ldap-bootstrap/certs/ca.crt:/run/secrets/ldap/ca.crt:ro
+      - ./test/ldap-bootstrap/init_org_entries.ldif:/opt/ldifs/init_org_entries.ldif:ro

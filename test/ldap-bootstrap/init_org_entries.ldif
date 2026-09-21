@@ -1,0 +1,22 @@
+dn: ou=service-accounts,dc=ipam,dc=test
+objectClass: organizationalUnit
+ou: service-accounts
+
+dn: ou=people,dc=ipam,dc=test
+objectClass: organizationalUnit
+ou: people
+
+dn: cn=ipam,ou=service-accounts,dc=ipam,dc=test
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: ipam
+description: Local development service account for IPAM LDAP lookups
+userPassword: ipam-bind-password
+
+dn: uid=testuser,ou=people,dc=ipam,dc=test
+objectClass: inetOrgPerson
+cn: Test User
+sn: User
+uid: testuser
+mail: testuser@ipam.test
+userPassword: test-password

@@ -150,6 +150,12 @@ with an API key can consume it.
 - Secrets (`client_secret`, `bind_password`) are stored in **plaintext** —
   deliberate tradeoff for a self-hosted OSS tool. Litestream backups carry
   live credentials as a result — document this for self-hosters.
+- `ldap_config.ca_cert` (PEM-encoded CA certificate) is **not** a secret,
+  despite living in the same table as `bind_password` — a CA cert is
+  public information. Used to build a custom trust pool for LDAPS
+  verification when the AD/LDAP server's cert is signed by an internal
+  enterprise CA (the common case for real AD); falls back to the system
+  default trust store if unset.
 - LDAP has **no `use_tls` column anywhere, ever** — TLS/StartTLS is
   hardcoded in the Go connection code.
 - `ADMIN_PASSWORD` (local admin only) remains an env var — the one

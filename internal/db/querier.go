@@ -11,9 +11,11 @@ import (
 type Querier interface {
 	AssignViewerRole(ctx context.Context, userID int64) error
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
+	CreateLDAPUser(ctx context.Context, arg CreateLDAPUserParams) (User, error)
 	CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error)
 	CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error)
 	GetLDAPConfig(ctx context.Context) (LdapConfig, error)
+	GetLDAPUser(ctx context.Context, ldapDn *string) (User, error)
 	GetLocalAdminUser(ctx context.Context) (User, error)
 	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
 	GetOIDCUser(ctx context.Context, oidcSubject *string) (User, error)

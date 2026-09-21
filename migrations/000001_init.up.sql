@@ -7,6 +7,7 @@ CREATE TABLE users (
     email         TEXT,
     auth_source   TEXT NOT NULL CHECK (auth_source IN ('local','oidc','ldap')),
     oidc_subject  TEXT UNIQUE,           -- OIDC "sub" claim, NULL for local/ldap users
+    ldap_dn       TEXT UNIQUE,           -- LDAP entry DN, NULL for local/oidc users
     password_hash TEXT,                  -- argon2id encoded hash, local admin only
     active        INTEGER NOT NULL DEFAULT 1,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -308,6 +309,20 @@ CREATE TABLE oidc_config (
 
 INSERT INTO oidc_config (id, enabled) VALUES (1, 0);
 
+-- LDAP/AD connection config, admin-editable via /admin/auth-settings.
+-- ca_cert is a PEM-encoded CA certificate, used to build a custom trust
+-- pool for the LDAPS/TLS connection instead of the system default trust
+-- store. This is necessary because real AD/LDAP servers are almost
+-- always signed by an org's internal enterprise CA, not a publicly
+-- trusted one -- without this, AuthenticateLDAP's TLS verification would
+-- fail against most real deployments unless the container/host's OS
+-- trust store was separately configured to trust that CA (a real
+-- operational burden pushed onto every self-hoster with an internal CA).
+-- NULL means "use the system default trust store" (fine for a publicly
+-- trusted LDAPS cert, rare in practice for enterprise AD). Not a secret
+-- -- a CA certificate is public information by design, safe alongside
+-- the plaintext bind_password without changing the plaintext-secrets
+-- tradeoff already accepted for this table.
 CREATE TABLE ldap_config (
     id            INTEGER PRIMARY KEY CHECK (id = 1),
     enabled       INTEGER NOT NULL DEFAULT 0,
@@ -316,7 +331,8 @@ CREATE TABLE ldap_config (
     base_dn       TEXT,
     bind_dn       TEXT,
     bind_password TEXT,
-    user_filter   TEXT   -- e.g. "(sAMAccountName=%s)" for Active Directory
+    user_filter   TEXT,   -- e.g. "(uid=%s)" or "(sAMAccountName=%s)" for Active Directory
+    ca_cert       TEXT    -- PEM-encoded CA cert; NULL = use system default trust store
 );
 
 INSERT INTO ldap_config (id, enabled) VALUES (1, 0);

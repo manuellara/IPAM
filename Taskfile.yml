@@ -56,3 +56,49 @@ tasks:
     desc: Delete the database files
     cmds:
       - rm -f {{.SQLITE_DB}} {{.SQLITE_DB}}-shm {{.SQLITE_DB}}-wal
+
+  ldap-certs:
+    desc: Generate a self-signed TLS cert for the local LDAP test server (idempotent)
+    status:
+      - test -f test/ldap-bootstrap/certs/server.crt
+      - test -f test/ldap-bootstrap/certs/server.key
+      - test -f test/ldap-bootstrap/certs/ca.crt
+    cmds:
+      - mkdir -p test/ldap-bootstrap/certs
+      - >
+        openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:P-384
+        -keyout test/ldap-bootstrap/certs/server.key
+        -out test/ldap-bootstrap/certs/server.crt
+        -days 365 -sha256
+        -subj "/CN=localhost"
+        -addext "subjectAltName=DNS:localhost"
+      - cp test/ldap-bootstrap/certs/server.crt test/ldap-bootstrap/certs/ca.crt
+
+  ldap-up:
+    desc: Start the local LDAP test server (generates certs first if missing)
+    deps: [ldap-certs]
+    cmds:
+      - docker compose up -d openldap
+
+  ldap-down:
+    desc: Stop and remove the local LDAP test server, including its data volume
+    cmds:
+      - docker compose down -v openldap
+
+  ldap-logs:
+    desc: Tail the local LDAP test server logs
+    cmds:
+      - docker compose logs -f openldap
+
+  ldap-reset:
+    desc: Tear down, wipe generated certs, and start fresh (use if the server gets into a bad state)
+    cmds:
+      - task: ldap-down
+      - rm -rf test/ldap-bootstrap/certs
+      - task: ldap-up
+
+  ldap-test:
+    desc: Run the LDAP auth tests against the local test server
+    deps: [ldap-up]
+    cmds:
+      - go test ./internal/auth/... -run TestAuthenticateLDAP -v

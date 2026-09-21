@@ -22,6 +22,10 @@ coverage.html
 *.sqlite
 *.sqlite3
 
+# Certificates
+*.key
+*.crt
+
 # Editor and OS temporary files
 .idea/
 *.swp

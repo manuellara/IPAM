@@ -21,6 +21,8 @@ const (
 	auditActionLocalLoginFailure = "auth.local_login_failure"
 	auditActionOIDCLoginSuccess  = "auth.oidc_login_success"
 	auditActionOIDCLoginFailure  = "auth.oidc_login_failure"
+	auditActionLDAPLoginSuccess  = "auth.ldap_login_success"
+	auditActionLDAPLoginFailure  = "auth.ldap_login_failure"
 	auditActionLogout            = "auth.logout"
 	oidcStateSessionKey          = "oidc_state"
 	oidcNonceSessionKey          = "oidc_nonce"
@@ -168,11 +170,71 @@ func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Re
 	c.redirectAfterLogin(w, r)
 }
 
-// handleLDAPLoginPost is a placeholder until IPAM-30 lands. The LDAP form
-// only renders when ldap_config.enabled = 1, which is false by default,
-// so this path shouldn't be reachable yet in normal use.
+// handleLDAPLoginPost authenticates against the configured LDAP/AD server
+// via search-then-bind, provisions a user on first successful login, and
+// establishes the normal IPAM session.
 func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Request) {
-	c.renderLoginPage(w, r, "LDAP login is not yet available.")
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	cfg, err := c.store.GetLDAPConfig(r.Context())
+	if err != nil || !auth.ConfigEnabled(cfg.Enabled) || cfg.Server == nil || cfg.Port == nil || cfg.BaseDn == nil || cfg.BindDn == nil || cfg.BindPassword == nil || cfg.UserFilter == nil {
+		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "ldap not configured")
+		c.renderLoginPage(w, r, "LDAP sign-in is not configured.")
+		return
+	}
+
+	ldapUser, err := auth.AuthenticateLDAP(*cfg.Server, *cfg.Port, *cfg.BaseDn, *cfg.BindDn, *cfg.BindPassword, *cfg.UserFilter, username, password, cfg.CaCert)
+	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("ldap authentication failed", "error", err)
+		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "authentication failed")
+		c.renderLoginPage(w, r, "Invalid username or password.")
+		return
+	}
+
+	user, err := c.store.GetLDAPUser(r.Context(), &ldapUser.DN)
+	if err == sql.ErrNoRows {
+		displayName := ldapUser.CN
+		if displayName == "" {
+			displayName = username
+		}
+		var email *string
+		if ldapUser.Email != "" {
+			email = &ldapUser.Email
+		}
+
+		txErr := db.WithTx(r.Context(), c.sqlDB, func(q *db.Queries) error {
+			var txErr error
+			user, txErr = q.CreateLDAPUser(r.Context(), db.CreateLDAPUserParams{
+				DisplayName: displayName, Email: email, LdapDn: &ldapUser.DN,
+			})
+			if txErr != nil {
+				return txErr
+			}
+			return q.AssignViewerRole(r.Context(), user.ID)
+		})
+		err = txErr
+	}
+	if err != nil {
+		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "user provisioning failed")
+		http.Error(w, "Unable to provision LDAP user", http.StatusInternalServerError)
+		return
+	}
+
+	roles, err := c.store.GetUserRoleNames(r.Context(), user.ID)
+	if err != nil {
+		c.auditLogin(r.Context(), &user.ID, auditActionLDAPLoginFailure, "role lookup failed")
+		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
+		return
+	}
+	if err := c.sessionManager.RenewToken(r.Context()); err != nil {
+		c.auditLogin(r.Context(), &user.ID, auditActionLDAPLoginFailure, "session renew failed")
+		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
+		return
+	}
+	middleware.SetAuthenticatedPrincipal(r.Context(), c.sessionManager, user, roles)
+	c.auditLogin(r.Context(), &user.ID, auditActionLDAPLoginSuccess, "")
+	c.redirectAfterLogin(w, r)
 }
 
 // Logout destroys the session.
@@ -238,13 +300,13 @@ func (c *LoginController) oidcLogin(w http.ResponseWriter, r *http.Request) {
 func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	expectedState := c.sessionManager.PopString(r.Context(), oidcStateSessionKey)
 	if expectedState == "" || subtle.ConstantTimeCompare([]byte(expectedState), []byte(r.URL.Query().Get("state"))) != 1 {
-		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "invalid state")
+		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "invalid state")
 		http.Error(w, "Invalid OIDC state", http.StatusBadRequest)
 		return
 	}
 	nonce := c.sessionManager.PopString(r.Context(), oidcNonceSessionKey)
 	if r.URL.Query().Get("error") != "" {
-		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "sign-in cancelled")
+		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "sign-in cancelled")
 		c.renderLoginPage(w, r, "OIDC sign-in was cancelled.")
 		return
 	}
@@ -261,7 +323,7 @@ func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	claims, err := oidcClient.VerifyCode(r.Context(), r.URL.Query().Get("code"), nonce)
 	if err != nil {
-		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "authentication failed")
+		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "authentication failed")
 		http.Error(w, "OIDC authentication failed", http.StatusUnauthorized)
 		return
 	}
@@ -293,29 +355,28 @@ func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		err = txErr
 	}
 	if err != nil {
-		c.auditOIDC(r.Context(), nil, auditActionOIDCLoginFailure, "provisioning failed")
+		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "provisioning failed")
 		http.Error(w, "Unable to provision OIDC user", http.StatusInternalServerError)
 		return
 	}
 	roles, err := c.store.GetUserRoleNames(r.Context(), user.ID)
 	if err != nil {
-		c.auditOIDC(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
+		c.auditLogin(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
 		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
 		return
 	}
 	if err := c.sessionManager.RenewToken(r.Context()); err != nil {
-		c.auditOIDC(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
+		c.auditLogin(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
 		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
 		return
 	}
-	c.auditOIDC(r.Context(), &user.ID, auditActionOIDCLoginSuccess, "login successful")
+	c.auditLogin(r.Context(), &user.ID, auditActionOIDCLoginSuccess, "login successful")
 	middleware.SetAuthenticatedPrincipal(r.Context(), c.sessionManager, user, roles)
 	c.redirectAfterLogin(w, r)
 }
 
-// auditOIDC writes an audit_log entry for an OIDC login attempt, logging
-// any write failure without blocking the actual auth flow.
-func (c *LoginController) auditOIDC(ctx context.Context, userID *int64, action, detail string) {
+// auditLogin creates an audit log entry for login-related actions.
+func (c *LoginController) auditLogin(ctx context.Context, userID *int64, action, detail string) {
 	params := db.CreateAuditLogParams{
 		ActorUserID: userID,
 		Action:      action,

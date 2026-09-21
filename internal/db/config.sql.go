@@ -10,7 +10,7 @@ import (
 )
 
 const getLDAPConfig = `-- name: GetLDAPConfig :one
-SELECT id, enabled, server, port, base_dn, bind_dn, bind_password, user_filter FROM ldap_config WHERE id = 1
+SELECT id, enabled, server, port, base_dn, bind_dn, bind_password, user_filter, ca_cert FROM ldap_config WHERE id = 1
 `
 
 func (q *Queries) GetLDAPConfig(ctx context.Context) (LdapConfig, error) {
@@ -25,6 +25,7 @@ func (q *Queries) GetLDAPConfig(ctx context.Context) (LdapConfig, error) {
 		&i.BindDn,
 		&i.BindPassword,
 		&i.UserFilter,
+		&i.CaCert,
 	)
 	return i, err
 }
