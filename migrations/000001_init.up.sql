@@ -47,6 +47,26 @@ CREATE TABLE sessions (
 
 CREATE INDEX sessions_expiry_idx ON sessions(expiry);
 
+-- Login rate limiting, tracked per (identifier, auth_method) rather than
+-- per source IP -- avoids locking out a whole office behind one NAT
+-- gateway, at the cost of not blocking distributed username-enumeration
+-- attacks. identifier is "administrator" (fixed) for local admin, or the
+-- submitted username for LDAP. OIDC is exempt -- IPAM never sees a
+-- password for that flow, the IdP owns its own lockout policy.
+-- Exponential backoff, not a flat lockout: harder to weaponize (a flat
+-- N-failures-then-locked-for-M-minutes policy lets an attacker
+-- deliberately lock out the real admin by repeatedly failing their
+-- login on purpose).
+CREATE TABLE login_attempts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    identifier      TEXT NOT NULL,
+    auth_method     TEXT NOT NULL CHECK (auth_method IN ('local','ldap')),
+    failure_count   INTEGER NOT NULL DEFAULT 0,
+    locked_until    TEXT,   -- NULL if not currently locked
+    last_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (identifier, auth_method)
+);
+
 ----------------------------------------------------------------------
 -- SUBNETS + RESERVED IPS
 ----------------------------------------------------------------------
@@ -331,8 +351,8 @@ CREATE TABLE ldap_config (
     base_dn       TEXT,
     bind_dn       TEXT,
     bind_password TEXT,
-    user_filter   TEXT,   -- e.g. "(uid=%s)" or "(sAMAccountName=%s)" for Active Directory
-    ca_cert       TEXT    -- PEM-encoded CA cert; NULL = use system default trust store
+    user_filter   TEXT,  -- e.g. "(uid=%s)" or "(sAMAccountName=%s)" for Active Directory
+    ca_cert       TEXT   -- PEM-encoded CA cert; NULL = use system default trust store
 );
 
 INSERT INTO ldap_config (id, enabled) VALUES (1, 0);

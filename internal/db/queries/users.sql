@@ -39,3 +39,20 @@ RETURNING *;
 -- name: AssignViewerRole :exec
 INSERT OR IGNORE INTO user_roles (user_id, role_id)
 SELECT sqlc.arg(user_id), id FROM roles WHERE name = 'viewer';
+
+-- name: GetLoginAttempt :one
+SELECT * FROM login_attempts
+WHERE identifier = sqlc.arg(identifier) AND auth_method = sqlc.arg(auth_method)
+LIMIT 1;
+
+-- name: RecordLoginFailure :exec
+INSERT INTO login_attempts (identifier, auth_method, failure_count, locked_until, last_attempt_at)
+VALUES (sqlc.arg(identifier), sqlc.arg(auth_method), sqlc.arg(failure_count), sqlc.arg(locked_until), datetime('now'))
+ON CONFLICT (identifier, auth_method) DO UPDATE SET
+	failure_count = excluded.failure_count,
+	locked_until = excluded.locked_until,
+	last_attempt_at = datetime('now');
+
+-- name: ResetLoginAttempts :exec
+DELETE FROM login_attempts
+WHERE identifier = sqlc.arg(identifier) AND auth_method = sqlc.arg(auth_method);

@@ -32,9 +32,9 @@ templ AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig,
 						</label>
 						<label for="oidc-issuer-url">Issuer URL</label>
 						if oidcConfig.IssuerUrl != nil {
-							<input type="url" id="oidc-issuer-url" name="issuer_url" value={ *oidcConfig.IssuerUrl } placeholder="https://login.example.com" autocomplete="url"/>
+							<input type="url" id="oidc-issuer-url" name="issuer_url" value={ *oidcConfig.IssuerUrl } placeholder="https://login.example.com" autocomplete="url" required/>
 						} else {
-							<input type="url" id="oidc-issuer-url" name="issuer_url" placeholder="https://login.example.com" autocomplete="url"/>
+							<input type="url" id="oidc-issuer-url" name="issuer_url" placeholder="https://login.example.com" autocomplete="url" required/>
 						}
 						<label for="oidc-client-id">Client ID</label>
 						if oidcConfig.ClientID != nil {
@@ -76,9 +76,9 @@ templ AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig,
 						}
 						<label for="ldap-port">Port</label>
 						if ldapConfig.Port != nil {
-							<input type="number" id="ldap-port" name="port" value={ fmt.Sprint(*ldapConfig.Port) } min="1" max="65535" inputmode="numeric"/>
+							<input type="number" id="ldap-port" name="port" value={ fmt.Sprint(*ldapConfig.Port) } min="1" max="65535" inputmode="numeric" required/>
 						} else {
-							<input type="number" id="ldap-port" name="port" placeholder="636" min="1" max="65535" inputmode="numeric"/>
+							<input type="number" id="ldap-port" name="port" placeholder="636" min="1" max="65535" inputmode="numeric" required/>
 						}
 						<label for="ldap-base-dn">Base DN</label>
 						if ldapConfig.BaseDn != nil {

@@ -17,8 +17,8 @@ func TestNewInitializesDatabase(t *testing.T) {
 	if err := service.DB().QueryRow("SELECT version FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("schema_migrations query error = %v", err)
 	}
-	if version != 1 {
-		t.Fatalf("migration version = %d, want 1", version)
+	if version != 2 {
+		t.Fatalf("migration version = %d, want 2", version)
 	}
 
 	var foreignKeys int

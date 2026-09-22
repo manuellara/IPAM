@@ -58,6 +58,15 @@ type LdapConfig struct {
 	CaCert       *string `json:"ca_cert"`
 }
 
+type LoginAttempt struct {
+	ID            int64   `json:"id"`
+	Identifier    string  `json:"identifier"`
+	AuthMethod    string  `json:"auth_method"`
+	FailureCount  int64   `json:"failure_count"`
+	LockedUntil   *string `json:"locked_until"`
+	LastAttemptAt string  `json:"last_attempt_at"`
+}
+
 type MaintenanceWindow struct {
 	ID              int64   `json:"id"`
 	Label           string  `json:"label"`

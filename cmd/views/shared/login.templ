@@ -6,19 +6,17 @@ templ LoginPage(errMsg string, oidcEnabled bool, ldapEnabled bool) {
 			<div class="card" style="width: 100%; max-width: 28rem; box-sizing: border-box;">
 				<h1 style="text-align: center; margin-block-end: 0;">IP Address Management</h1>
 				<p class="mb-6" style="text-align: center; color: var(--muted-foreground);">Sign in to request, approve, and track IP allocations across your network.</p>
-
 				if errMsg != "" {
-					<p class="error mb-4" role="alert">{ errMsg }</p>
+					<div class="error mb-4" role="alert" data-variant="error">
+						<strong>Error!</strong> { errMsg }
+					</div>
 				}
-
 				if oidcEnabled {
 					<a href="/auth/oidc/login" class="button" style="width: 100%; box-sizing: border-box;">Sign in with SSO</a>
 				}
-
 				if oidcEnabled && ldapEnabled {
 					<hr class="mt-6 mb-6"/>
 				}
-
 				if ldapEnabled {
 					<form method="POST" action="/login">
 						<fieldset>
@@ -32,7 +30,6 @@ templ LoginPage(errMsg string, oidcEnabled bool, ldapEnabled bool) {
 						</fieldset>
 					</form>
 				}
-
 				<details class="mt-6">
 					<summary>Sign in as local administrator</summary>
 					<div style="padding: var(--space-4);">

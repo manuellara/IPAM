@@ -250,6 +250,38 @@ Naming schemes have a `naming_mode`: `generated` or `manual`.
   `docs/workflows.md`'s "Request and Approval Workflow" section for the
   exact branch logic.
 
+## Login rate limiting
+
+`login_attempts` (keyed on `identifier` + `auth_method`, `UNIQUE` pair)
+tracks failed login attempts and applies **exponential backoff**, not a
+flat lockout — a flat "N failures then locked for M minutes" policy is
+weaponizable (an attacker can deliberately lock out the real admin by
+repeatedly failing their login on purpose).
+
+- Tracked **per identity, not per source IP** — avoids locking out a
+  whole office behind one shared NAT gateway. Tradeoff: this doesn't
+  block distributed username-enumeration across many different
+  identifiers, only protects a specific targeted account. Accepted
+  tradeoff, not an oversight.
+- `identifier` is `"administrator"` (fixed) for local admin, or the
+  submitted username for LDAP. **OIDC is exempt** — IPAM never sees a
+  password for that flow; the IdP owns its own lockout policy.
+- Backoff schedule (`internal/auth/rate_limit.go`,
+  `loginBackoffDuration`): no penalty for the first 2 failures (typos
+  happen), then doubling from 5s, capped at 5 minutes.
+- **Always check `CheckLoginLockout` BEFORE attempting the actual
+  password/bind check** — a locked-out attempt must never do the
+  expensive work (argon2 comparison, LDAP bind), both for cost and to
+  avoid leaking timing information.
+- **`login_attempts.locked_until` is stored as RFC3339, NOT SQLite's
+  `datetime('now')` style** used by every other timestamp column in this
+  schema. This is intentional, not an inconsistency to "fix": it's a
+  value computed and formatted entirely in Go
+  (`time.Now().Add(backoffDuration)`), not something SQLite generates —
+  RFC3339 round-trips cleanly with `time.Parse`/`time.Format` without
+  hand-matching SQLite's string format. Don't change it to match the
+  other columns.
+
 ## Servers, Maintenance Windows, and the External Integration API
 
 - **`servers`** is a general asset registry, decoupled from the request/
@@ -359,3 +391,13 @@ Naming schemes have a `naming_mode`: `generated` or `manual`.
 - Don't populate `users.ldap_dn` from the submitted username or the
   `user_filter` match value — use the DN the directory search actually
   returned for that entry.
+- Don't "fix" `login_attempts.locked_until` to match the `datetime('now')`
+  style of other timestamp columns — it's intentionally RFC3339, see
+  "Login rate limiting" above.
+- Don't replace the exponential backoff in `login_attempts` with a flat
+  N-failures-then-locked-for-M-minutes policy — it's weaponizable against
+  the real account holder.
+- Don't key `login_attempts` by source IP instead of identifier — that's
+  a deliberate choice, not something to "improve."
+- Don't apply rate limiting to OIDC — it never receives a password
+  through IPAM.

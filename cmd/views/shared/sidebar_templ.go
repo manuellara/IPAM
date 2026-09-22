@@ -82,33 +82,46 @@ func Sidebar(principal middleware.Principal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</nav><footer><strong>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</nav><footer style=\"display: flex; align-items: center; gap: var(--space-2);\"><figure data-variant=\"avatar\" aria-hidden=\"true\" style=\"--sz: 2rem;\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
-		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(principal.User.DisplayName)
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(avatarInitials(principal.User.DisplayName))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 49, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 49, Col: 115}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</strong><div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</figure><div><strong>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
-		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(roleNames(principal.Roles))
+		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(principal.User.DisplayName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 50, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 51, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div></footer>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</strong><div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var4 string
+		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(roleNames(principal.Roles))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/shared/sidebar.templ`, Line: 52, Col: 36}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div></div></footer>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -116,12 +129,26 @@ func Sidebar(principal middleware.Principal) templ.Component {
 	})
 }
 
+// roleNames returns a comma-separated string of role names for the given roles.
 func roleNames(roles []middleware.Role) string {
 	names := make([]string, len(roles))
 	for index, role := range roles {
 		names[index] = string(role)
 	}
 	return strings.Join(names, ", ")
+}
+
+// avatarInitials returns the initials for the given display name.
+func avatarInitials(displayName string) string {
+	words := strings.Fields(displayName)
+	if len(words) == 0 {
+		return "?"
+	}
+	initials := []rune{[]rune(words[0])[0]}
+	if len(words) > 1 {
+		initials = append(initials, []rune(words[len(words)-1])[0])
+	}
+	return strings.ToUpper(string(initials))
 }
 
 var _ = templruntime.GeneratedTemplate

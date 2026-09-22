@@ -151,6 +151,21 @@ the same `users`/`user_roles` tables:
 - Sessions: `scs` + `sqlite3store`. After login, redirect to whatever path
   was stashed before the auth redirect (`PostLoginRedirectSessionKey`),
   falling back to `/dashboard`.
+- **Login rate limiting** (local admin and LDAP only, not OIDC): before
+  attempting the password/bind check, `CheckLoginLockout` looks up
+  `login_attempts` by `(identifier, auth_method)` — `identifier` is
+  `"administrator"` for local admin, the submitted username for LDAP. If
+  currently locked, the login is rejected immediately, without ever
+  touching argon2 or opening an LDAP connection. On failure,
+  `RecordLoginFailure` increments the count and computes the next lockout
+  window via exponential backoff (no penalty for the first 2 failures,
+  then doubling from 5s, capped at 5 minutes) — not a flat lockout, which
+  would be weaponizable against the real account holder. On success,
+  `ResetLoginAttempts` clears the row. Tracked per identity rather than
+  per source IP, to avoid locking out a shared office NAT gateway — the
+  tradeoff is that distributed username enumeration across many fake
+  identifiers isn't blocked, only a specific targeted account is
+  protected.
 
 ## Atomic Multi-Step Writes (`db.WithTx`)
 

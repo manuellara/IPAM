@@ -88,7 +88,8 @@ embedded migrations, and ensures the `administrator` account uses the current
 `ADMIN_PASSWORD` value. The database file is intentionally ignored by Git.
 
 The local login page is available at `/login`; successful login redirects to
-`/`. The health endpoint is `/healthz` and does not require a session.
+`/dashboard` unless the user was redirected from another protected page. The
+health endpoint is `/healthz` and does not require a session.
 
 > Security note: OIDC and LDAP credentials are intentionally stored in plain
 > text in the database. That means any database backups or replicated copies of

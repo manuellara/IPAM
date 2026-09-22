@@ -17,9 +17,12 @@ type Querier interface {
 	GetLDAPConfig(ctx context.Context) (LdapConfig, error)
 	GetLDAPUser(ctx context.Context, ldapDn *string) (User, error)
 	GetLocalAdminUser(ctx context.Context) (User, error)
+	GetLoginAttempt(ctx context.Context, arg GetLoginAttemptParams) (LoginAttempt, error)
 	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
 	GetOIDCUser(ctx context.Context, oidcSubject *string) (User, error)
 	GetUserRoleNames(ctx context.Context, userID int64) ([]string, error)
+	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) error
+	ResetLoginAttempts(ctx context.Context, arg ResetLoginAttemptsParams) error
 	UpdateLDAPConfig(ctx context.Context, arg UpdateLDAPConfigParams) error
 	UpdateOIDCConfig(ctx context.Context, arg UpdateOIDCConfigParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error

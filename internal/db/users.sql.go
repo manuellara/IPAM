@@ -144,6 +144,31 @@ func (q *Queries) GetLocalAdminUser(ctx context.Context) (User, error) {
 	return i, err
 }
 
+const getLoginAttempt = `-- name: GetLoginAttempt :one
+SELECT id, identifier, auth_method, failure_count, locked_until, last_attempt_at FROM login_attempts
+WHERE identifier = ?1 AND auth_method = ?2
+LIMIT 1
+`
+
+type GetLoginAttemptParams struct {
+	Identifier string `json:"identifier"`
+	AuthMethod string `json:"auth_method"`
+}
+
+func (q *Queries) GetLoginAttempt(ctx context.Context, arg GetLoginAttemptParams) (LoginAttempt, error) {
+	row := q.db.QueryRowContext(ctx, getLoginAttempt, arg.Identifier, arg.AuthMethod)
+	var i LoginAttempt
+	err := row.Scan(
+		&i.ID,
+		&i.Identifier,
+		&i.AuthMethod,
+		&i.FailureCount,
+		&i.LockedUntil,
+		&i.LastAttemptAt,
+	)
+	return i, err
+}
+
 const getOIDCUser = `-- name: GetOIDCUser :one
 SELECT id, display_name, email, auth_source, oidc_subject, ldap_dn, password_hash, active, created_at FROM users
 WHERE auth_source = 'oidc' AND oidc_subject = ?1
@@ -194,6 +219,47 @@ func (q *Queries) GetUserRoleNames(ctx context.Context, userID int64) ([]string,
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordLoginFailure = `-- name: RecordLoginFailure :exec
+INSERT INTO login_attempts (identifier, auth_method, failure_count, locked_until, last_attempt_at)
+VALUES (?1, ?2, ?3, ?4, datetime('now'))
+ON CONFLICT (identifier, auth_method) DO UPDATE SET
+	failure_count = excluded.failure_count,
+	locked_until = excluded.locked_until,
+	last_attempt_at = datetime('now')
+`
+
+type RecordLoginFailureParams struct {
+	Identifier   string  `json:"identifier"`
+	AuthMethod   string  `json:"auth_method"`
+	FailureCount int64   `json:"failure_count"`
+	LockedUntil  *string `json:"locked_until"`
+}
+
+func (q *Queries) RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) error {
+	_, err := q.db.ExecContext(ctx, recordLoginFailure,
+		arg.Identifier,
+		arg.AuthMethod,
+		arg.FailureCount,
+		arg.LockedUntil,
+	)
+	return err
+}
+
+const resetLoginAttempts = `-- name: ResetLoginAttempts :exec
+DELETE FROM login_attempts
+WHERE identifier = ?1 AND auth_method = ?2
+`
+
+type ResetLoginAttemptsParams struct {
+	Identifier string `json:"identifier"`
+	AuthMethod string `json:"auth_method"`
+}
+
+func (q *Queries) ResetLoginAttempts(ctx context.Context, arg ResetLoginAttemptsParams) error {
+	_, err := q.db.ExecContext(ctx, resetLoginAttempts, arg.Identifier, arg.AuthMethod)
+	return err
 }
 
 const updateUserPasswordHash = `-- name: UpdateUserPasswordHash :exec

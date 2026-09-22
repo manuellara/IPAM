@@ -45,16 +45,33 @@ templ Sidebar(principal middleware.Principal) {
 			</ul>
 		}
 	</nav>
-	<footer>
-		<strong>{ principal.User.DisplayName }</strong>
-		<div>{ roleNames(principal.Roles) }</div>
+	<footer style="display: flex; align-items: center; gap: var(--space-2);">
+		<figure data-variant="avatar" aria-hidden="true" style="--sz: 2rem;">{ avatarInitials(principal.User.DisplayName) }</figure>
+		<div>
+			<strong>{ principal.User.DisplayName }</strong>
+			<div>{ roleNames(principal.Roles) }</div>
+		</div>
 	</footer>
 }
 
+// roleNames returns a comma-separated string of role names for the given roles.
 func roleNames(roles []middleware.Role) string {
 	names := make([]string, len(roles))
 	for index, role := range roles {
 		names[index] = string(role)
 	}
 	return strings.Join(names, ", ")
+}
+
+// avatarInitials returns the initials for the given display name.
+func avatarInitials(displayName string) string {
+	words := strings.Fields(displayName)
+	if len(words) == 0 {
+		return "?"
+	}
+	initials := []rune{[]rune(words[0])[0]}
+	if len(words) > 1 {
+		initials = append(initials, []rune(words[len(words)-1])[0])
+	}
+	return strings.ToUpper(string(initials))
 }

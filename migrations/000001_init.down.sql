@@ -73,6 +73,7 @@ DROP TABLE IF EXISTS subnets;
 ----------------------------------------------------------------------
 -- DROP: USERS, ROLES, USER_ROLES, SESSIONS
 ----------------------------------------------------------------------
+DROP TABLE IF EXISTS login_attempts;
 DROP INDEX IF EXISTS sessions_expiry_idx;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS user_roles;

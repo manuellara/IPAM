@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -102,6 +103,17 @@ func strPtrOrNil(s string) *string {
 // handleLocalLoginPost handles the login process for the local administrator account. It verifies the submitted password, manages the session, and logs audit events.
 func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
+	const identifier = "administrator"
+
+	if err := auth.CheckLoginLockout(r.Context(), c.store, identifier, "local"); err != nil {
+		var locked *auth.ErrLoginLocked
+		if errors.As(err, &locked) {
+			c.auditLogin(r.Context(), nil, auditActionLocalLoginFailure, "locked out")
+			c.renderLoginPage(w, r, fmt.Sprintf("Too many failed attempts. Try again in %d seconds.", int(locked.RetryAfter.Seconds())+1))
+			return
+		}
+		middleware.GetLoggerFromContext(r.Context()).Error("lockout check failed", "error", err)
+	}
 
 	admin, err := c.store.GetLocalAdminUser(r.Context())
 	if err != nil {
@@ -118,31 +130,25 @@ func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Re
 	}
 
 	if admin.PasswordHash == nil {
-		err = c.store.CreateAuditLog(r.Context(), db.CreateAuditLogParams{
-			ActorUserID: &admin.ID,
-			Action:      auditActionLocalLoginFailure,
-			Detail:      strPtr("no password set"),
-		})
-		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("audit log creation failed", "error", err)
+		if err := auth.RecordLoginFailure(r.Context(), c.store, identifier, "local"); err != nil {
+			middleware.GetLoggerFromContext(r.Context()).Error("failed to record login failure", "error", err)
 		}
+		c.auditLogin(r.Context(), &admin.ID, auditActionLocalLoginFailure, "no password set")
 		c.renderLoginPage(w, r, "Invalid username or password.")
 		return
 	}
 
 	match, err := argon2id.ComparePasswordAndHash(password, *admin.PasswordHash)
 	if err != nil || !match {
-		err = c.store.CreateAuditLog(r.Context(), db.CreateAuditLogParams{
-			ActorUserID: &admin.ID,
-			Action:      auditActionLocalLoginFailure,
-			Detail:      strPtr("password mismatch"),
-		})
-		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("audit log creation failed", "error", err)
+		if err := auth.RecordLoginFailure(r.Context(), c.store, identifier, "local"); err != nil {
+			middleware.GetLoggerFromContext(r.Context()).Error("failed to record login failure", "error", err)
 		}
+		c.auditLogin(r.Context(), &admin.ID, auditActionLocalLoginFailure, "password mismatch")
 		c.renderLoginPage(w, r, "Invalid username or password.")
 		return
 	}
+
+	_ = auth.ResetLoginAttempts(r.Context(), c.store, identifier, "local")
 
 	if err := c.sessionManager.RenewToken(r.Context()); err != nil {
 		middleware.GetLoggerFromContext(r.Context()).Error("session renew failed", "error", err)
@@ -158,13 +164,7 @@ func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Re
 	}
 	middleware.SetAuthenticatedPrincipal(r.Context(), c.sessionManager, admin, roleNames)
 
-	err = c.store.CreateAuditLog(r.Context(), db.CreateAuditLogParams{
-		ActorUserID: &admin.ID,
-		Action:      auditActionLocalLoginSuccess,
-	})
-	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("audit log creation failed", "error", err)
-	}
+	c.auditLogin(r.Context(), &admin.ID, auditActionLocalLoginSuccess, "")
 
 	// Redirect the user to the page they originally tried to access, or "/" if none was stored.
 	c.redirectAfterLogin(w, r)
@@ -177,6 +177,16 @@ func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Req
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
+	if err := auth.CheckLoginLockout(r.Context(), c.store, username, "ldap"); err != nil {
+		var locked *auth.ErrLoginLocked
+		if errors.As(err, &locked) {
+			c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "locked out")
+			c.renderLoginPage(w, r, fmt.Sprintf("Too many failed attempts. Try again in %d seconds.", int(locked.RetryAfter.Seconds())+1))
+			return
+		}
+		middleware.GetLoggerFromContext(r.Context()).Error("lockout check failed", "error", err)
+	}
+
 	cfg, err := c.store.GetLDAPConfig(r.Context())
 	if err != nil || !auth.ConfigEnabled(cfg.Enabled) || cfg.Server == nil || cfg.Port == nil || cfg.BaseDn == nil || cfg.BindDn == nil || cfg.BindPassword == nil || cfg.UserFilter == nil {
 		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "ldap not configured")
@@ -187,9 +197,16 @@ func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Req
 	ldapUser, err := auth.AuthenticateLDAP(*cfg.Server, *cfg.Port, *cfg.BaseDn, *cfg.BindDn, *cfg.BindPassword, *cfg.UserFilter, username, password, cfg.CaCert)
 	if err != nil {
 		middleware.GetLoggerFromContext(r.Context()).Warn("ldap authentication failed", "error", err)
+		if err := auth.RecordLoginFailure(r.Context(), c.store, username, "ldap"); err != nil {
+			middleware.GetLoggerFromContext(r.Context()).Error("failed to record login failure", "error", err)
+		}
 		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "authentication failed")
 		c.renderLoginPage(w, r, "Invalid username or password.")
 		return
+	}
+
+	if err := auth.ResetLoginAttempts(r.Context(), c.store, username, "ldap"); err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Error("failed to reset login attempts", "error", err)
 	}
 
 	user, err := c.store.GetLDAPUser(r.Context(), &ldapUser.DN)

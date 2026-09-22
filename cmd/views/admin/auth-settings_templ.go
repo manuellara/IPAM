@@ -111,12 +111,12 @@ func AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig, 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" placeholder=\"https://login.example.com\" autocomplete=\"url\"> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" placeholder=\"https://login.example.com\" autocomplete=\"url\" required> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<input type=\"url\" id=\"oidc-issuer-url\" name=\"issuer_url\" placeholder=\"https://login.example.com\" autocomplete=\"url\"> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<input type=\"url\" id=\"oidc-issuer-url\" name=\"issuer_url\" placeholder=\"https://login.example.com\" autocomplete=\"url\" required> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -248,12 +248,12 @@ func AuthSettingsMain(principal middleware.Principal, oidcConfig db.OidcConfig, 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" min=\"1\" max=\"65535\" inputmode=\"numeric\"> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" min=\"1\" max=\"65535\" inputmode=\"numeric\" required> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<input type=\"number\" id=\"ldap-port\" name=\"port\" placeholder=\"636\" min=\"1\" max=\"65535\" inputmode=\"numeric\"> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<input type=\"number\" id=\"ldap-port\" name=\"port\" placeholder=\"636\" min=\"1\" max=\"65535\" inputmode=\"numeric\" required> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
