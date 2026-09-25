@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS api_keys;
 ----------------------------------------------------------------------
 -- DROP: MAINTENANCE WINDOWS
 ----------------------------------------------------------------------
+DROP TABLE IF EXISTS maintenance_window_rules;
 DROP TABLE IF EXISTS maintenance_window_servers;
 DROP TABLE IF EXISTS maintenance_windows;
 

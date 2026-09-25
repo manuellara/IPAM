@@ -70,6 +70,7 @@ func main() {
 	loginController := shared.NewLoginController(sqlcService, databaseService.DB(), sessionManager)
 	dashboardController := shared.NewDashboardController(sqlcService, sessionManager)
 	authSettingsController := admincontroller.NewAuthSettingsController(sqlcService, sessionManager)
+	subnetsController := admincontroller.NewSubnetsController(sqlcService, sessionManager)
 
 	// Initialize the HTTP request multiplexer
 	mux := http.NewServeMux()
@@ -85,6 +86,7 @@ func main() {
 	loginController.RegisterLoginRoutes(mux, publicMiddleware, authenticatedMiddleware)
 	dashboardController.RegisterDashboardRoutes(mux, authenticatedMiddleware)
 	authSettingsController.RegisterAuthSettingsRoutes(mux, authenticatedMiddleware)
+	subnetsController.RegisterSubnetsRoutes(mux, authenticatedMiddleware)
 
 	// Run the HTTP server with session management
 	if err := http.ListenAndServe(":8080", middleware.RecoverMiddleware(mux)); err != nil {

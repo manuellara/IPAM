@@ -46,62 +46,64 @@ role, and **None** means no auth required.
 | PAGE | GET | `/requests` | `requester`, `viewer`, or `admin` | Requester sees own requests; viewer/admin see all (read-only for viewer) |
 | PAGE | GET | `/requests/new` | `requester` | Submission form: scheme → site → env, then EITHER app+role dropdowns (generated schemes) OR a free-text "Virtual Server Name" field (manual schemes, e.g. F5 Virtual Server). No subnet/IP picker. |
 | FRAGMENT | GET | `/requests/new/fields?scheme_id=` | `requester` | Swaps the field set based on the selected scheme's `naming_mode` |
-| ACTION | POST | `/requests` | `requester` | Redirects to `/requests/:id` on success |
-| PAGE | GET | `/requests/:id` | `requester` (own), `viewer`, or `admin` | Detail view with status timeline; shows Decommission action once approved |
-| PAGE | GET | `/requests/:id/edit` | `requester` (own) | Edit form (pending: correcting a mistake; denied: resubmission) |
-| ACTION | POST | `/requests/:id` | `requester` (own) | Saves edit / resubmits (denied → pending) |
-| FRAGMENT | POST | `/requests/:id/cancel` | `requester` (own) | Only allowed while pending |
-| FRAGMENT | POST | `/requests/:id/decommission` | `requester` (own) | Creates a pending `decommission_request` linked to this request |
+| ACTION | POST | `/requests` | `requester` | Redirects to `/requests/{id}` on success |
+| PAGE | GET | `/requests/{id}` | `requester` (own), `viewer`, or `admin` | Detail view with status timeline; shows Decommission action once approved |
+| PAGE | GET | `/requests/{id}/edit` | `requester` (own) | Edit form (pending: correcting a mistake; denied: resubmission) |
+| ACTION | POST | `/requests/{id}` | `requester` (own) | Saves edit / resubmits (denied → pending) |
+| FRAGMENT | POST | `/requests/{id}/cancel` | `requester` (own) | Only allowed while pending |
+| FRAGMENT | POST | `/requests/{id}/decommission` | `requester` (own) | Creates a pending `decommission_request` linked to this request |
 
 ## Approver Role
 
 | Type | Method | Path | Required Role | Description |
 |---|---|---|---|---|
 | PAGE | GET | `/approvals` | `approver` | Pending provisioning queue |
-| PAGE | GET | `/approvals/:id` | `approver` | Detail with approve/deny actions |
-| FRAGMENT | POST | `/approvals/:id/approve` | `approver` | Atomic transaction, branches by `naming_mode`: generated (sequence lock/increment/generate) vs manual (validate + copy `manual_name`). Allocates IP, writes `servers` row, audit log, emails requester either way. |
-| FRAGMENT | POST | `/approvals/:id/deny` | `approver` | Emails requester |
+| PAGE | GET | `/approvals/{id}` | `approver` | Detail with approve/deny actions |
+| FRAGMENT | POST | `/approvals/{id}/approve` | `approver` | Atomic transaction, branches by `naming_mode`: generated (sequence lock/increment/generate) vs manual (validate + copy `manual_name`). Allocates IP, writes `servers` row, audit log, emails requester either way. |
+| FRAGMENT | POST | `/approvals/{id}/deny` | `approver` | Emails requester |
 | PAGE | GET | `/decommissions` | `approver` | Pending decommission queue |
-| PAGE | GET | `/decommissions/:id` | `approver` | Detail with approve/deny actions |
-| FRAGMENT | POST | `/decommissions/:id/approve` | `approver` | Releases the IP back to the pool (hostname/sequence never reused) |
-| FRAGMENT | POST | `/decommissions/:id/deny` | `approver` | Emails requester with reason |
+| PAGE | GET | `/decommissions/{id}` | `approver` | Detail with approve/deny actions |
+| FRAGMENT | POST | `/decommissions/{id}/approve` | `approver` | Releases the IP back to the pool (hostname/sequence never reused) |
+| FRAGMENT | POST | `/decommissions/{id}/deny` | `approver` | Emails requester with reason |
 
 ## Admin Role
 
 | Type | Method | Path | Required Role | Description |
 |---|---|---|---|---|
-| PAGE | GET | `/admin/subnets` | `admin` (`viewer`: read-only) | List, with search/filter |
-| PAGE | GET | `/admin/subnets/new` | `admin` | |
-| ACTION | POST | `/admin/subnets` | `admin` | Overlap validation enforced |
-| PAGE | GET | `/admin/subnets/:id/edit` | `admin` | |
-| ACTION | POST | `/admin/subnets/:id` | `admin` | |
+| PAGE | GET | `/admin/subnets` | `admin` (`viewer`: read-only) | List with per-subnet utilization (stacked allocated/reserved/free bar) and site/env tags; search is client-side (Alpine.js `x-show`) — acceptable because this table is admin-sized/bounded, unlike audit log below |
+| PAGE | GET | `/admin/subnets/new` | `admin` | Shares `SubnetFormPage`/`SubnetFormMain` templ with the edit form (`SubnetFormData.IsEdit` flag), not a separate template |
+| ACTION | POST | `/admin/subnets` | `admin` | Overlap validation enforced (active subnets only) |
+| PAGE | GET | `/admin/subnets/{id}/edit` | `admin` | Shows an active-allocation-count warning if unchecking "active" |
+| ACTION | POST | `/admin/subnets/{id}` | `admin` | Overlap validation excludes self |
 | PAGE | GET | `/admin/site-env-map` | `admin` | Site+env+**scheme** → subnet mappings (scheme-scoped, so e.g. F5 VIPs can use a dedicated subnet) |
 | PAGE | GET | `/admin/site-env-map/new` | `admin` | |
 | ACTION | POST | `/admin/site-env-map` | `admin` | |
 | PAGE | GET | `/admin/naming-schemes` | `admin` | The 4 schemes (Server, Network Device, VM, F5 Virtual Server) |
-| PAGE | GET | `/admin/naming-schemes/:id` | `admin` | Scheme detail + token value tables + `naming_mode` |
-| PAGE | GET | `/admin/naming-schemes/:id/tokens/new` | `admin` | |
-| FRAGMENT | POST | `/admin/naming-schemes/:id/tokens` | `admin` | Exact 3-char code length enforced |
+| PAGE | GET | `/admin/naming-schemes/{id}` | `admin` | Scheme detail + token value tables + `naming_mode` |
+| PAGE | GET | `/admin/naming-schemes/{id}/tokens/new` | `admin` | |
+| FRAGMENT | POST | `/admin/naming-schemes/{id}/tokens` | `admin` | Exact 3-char code length enforced |
 | PAGE | GET | `/admin/users` | `admin` | List, assign roles |
-| FRAGMENT | POST | `/admin/users/:id/roles` | `admin` | |
-| PAGE | GET | `/admin/audit-log` | `admin` (`viewer`: read-only) | |
+| FRAGMENT | POST | `/admin/users/{id}/roles` | `admin` | |
+| PAGE | GET | `/admin/audit-log` | `admin` (`viewer`: read-only) | **Not yet built** (planned work item, unscheduled). Unlike `/admin/subnets`, this table is unbounded/append-only — it must use real server-side pagination and filtering, not client-side `x-show`. See "Admin List Pagination Convention" in `docs/workflows.md`. |
 | ACTION | POST | `/admin/allocations` | `admin` | Admin-direct allocation; also creates a `servers` row |
 | PAGE | GET | `/admin/allocations/export.csv` | `admin` | Current (non-released) allocations |
 | PAGE | GET | `/admin/auth-settings` | `admin` | View/edit `oidc_config` and `ldap_config` |
 | ACTION | POST | `/admin/auth-settings` | `admin` | Takes effect on next `/login` load, no restart |
-| PAGE | GET | `/admin/servers` | `admin` | All servers (any origin), search by hostname/description |
-| PAGE | GET | `/admin/servers/import` | `admin` | CSV upload form (hostname, ip_address, subnet, description) |
+| PAGE | GET | `/admin/servers` | `admin` | All servers (any origin), search by hostname/description/site/env/app/role/asset_type |
+| PAGE | GET | `/admin/servers/import` | `admin` | CSV upload form (hostname, ip_address, subnet, description, optional asset_type/site/env/app/role) |
 | ACTION | POST | `/admin/servers/import` | `admin` | Per-row processing + per-row success/failure report; reuses subnet overlap/duplicate-IP validation |
 | PAGE | GET | `/admin/maintenance-windows` | `admin` | List |
-| PAGE | GET | `/admin/maintenance-windows/new` | `admin` | One-time or full RRULE builder (Alpine.js) |
+| PAGE | GET | `/admin/maintenance-windows/new` | `admin` | One-time or full RRULE builder (Alpine.js), plus rule builder (site/env/app/role) |
 | FRAGMENT | POST | `/admin/maintenance-windows/preview` | `admin` | Live occurrence preview |
+| FRAGMENT | POST | `/admin/maintenance-windows/rules/preview` | `admin` | Live matching-server-count preview as rule fields change |
 | ACTION | POST | `/admin/maintenance-windows` | `admin` | Save |
-| PAGE | GET | `/admin/maintenance-windows/:id/edit` | `admin` | |
-| ACTION | POST | `/admin/maintenance-windows/:id` | `admin` | |
-| FRAGMENT | POST | `/admin/maintenance-windows/:id/servers` | `admin` | Add/remove attached servers |
+| PAGE | GET | `/admin/maintenance-windows/{id}/edit` | `admin` | |
+| ACTION | POST | `/admin/maintenance-windows/{id}` | `admin` | |
+| FRAGMENT | POST | `/admin/maintenance-windows/{id}/servers` | `admin` | Add/remove attached servers (static list) |
+| FRAGMENT | POST | `/admin/maintenance-windows/{id}/rules` | `admin` | Add/remove rules (site/env/app/role wildcards) |
 | PAGE | GET | `/admin/api-keys` | `admin` | List (label, scope, last used, revoked) — never shows the key |
 | ACTION | POST | `/admin/api-keys` | `admin` | Generates a key, shown once |
-| FRAGMENT | POST | `/admin/api-keys/:id/revoke` | `admin` | |
+| FRAGMENT | POST | `/admin/api-keys/{id}/revoke` | `admin` | |
 
 ## Viewer Role (read-only)
 
@@ -121,7 +123,7 @@ role, and **None** means no auth required.
 |---|---|---|---|---|
 | ACTION | GET | `/api/maintenance/blocked?date=YYYY-MM-DD` | `read` | Returns `[{hostname, description, reason}]` for servers with a window covering that date (default: today). `description` included so a human consuming the response can judge whether to override for a given server. |
 | ACTION | GET | `/api/maintenance/allowed?date=YYYY-MM-DD` | `read` | Inverse of blocked |
-| ACTION | POST | `/api/maintenance-windows` | `write` | Batch-create windows programmatically (e.g. an external system pushing its own computed dates). Per-item success/failure, not all-or-nothing. References servers by hostname, not internal ID. |
+| ACTION | POST | `/api/maintenance-windows` | `write` | Batch-create windows programmatically (e.g. an external system pushing its own computed dates). Accepts `hostnames` (static list) and/or `rules` (site/env/app/role wildcards) per window. Per-item success/failure, not all-or-nothing. References servers by hostname, not internal ID. |
 
 This API is intentionally general-purpose — not built around any specific
 vendor's deployment tool. Any integration that can make an HTTP request
@@ -181,18 +183,54 @@ with an API key can consume it.
   request approval sets `source = request` and `request_id`; the other
   three set `request_id` NULL — `source` is what distinguishes them from
   each other, not `request_id` alone.
+- `servers.asset_type` (`server` or `virtual_ip`) distinguishes real
+  machines from F5 Virtual Server VIPs — derived automatically for
+  request-sourced servers, admin-chosen for the other three sources.
+- `servers.site_code`/`env_code`/`app_code`/`role_code` (denormalized,
+  not looked up via `requests`) classify a server for rule-based
+  maintenance window matching. Copied automatically for request-sourced
+  servers, optional/admin-set for the other three. `NULL` never
+  wildcard-matches a rule.
 - `ip_allocations.server_id` links every allocation to its server
   regardless of origin.
 - `maintenance_windows` uses RFC 5545 RRULE for recurrence. `NULL` rrule =
   one-time occurrence (covers orgs whose blackout dates are computed
   externally/manually each period — e.g. payroll cycles shifting around
   federal holidays — rather than truly periodic).
-- One window can cover many servers via `maintenance_window_servers`. The
-  `/api/maintenance/blocked` response includes each server's `description`
-  specifically so a human reviewing the list (e.g. before running a
-  deployment) can judge whether to override for a server that's technically
-  listed but not actually critical.
+- A window's effective server set is the **union** of `maintenance_window_servers`
+  (static, explicit list) and `maintenance_window_rules` (site/env/app/role
+  wildcards, OR'd across rules) — e.g. one rule with just `env=PRD, app=PAY`
+  set matches every PRD payroll server regardless of site or role, and
+  stays correct as new matching servers are provisioned later.
+- **Rule matching hard-excludes `asset_type = 'virtual_ip'`** — never
+  expressible or overridable via a rule's own field values; a VIP can only
+  be covered by the static list.
+- The `/api/maintenance/blocked` response includes each server's
+  `description` specifically so a human reviewing the list (e.g. before
+  running a deployment) can judge whether to override for a server that's
+  technically listed but not actually critical.
 - This feature is general-purpose, not built for any specific vendor/tool.
+
+## Admin List UI Conventions
+
+- **Pagination**: client-side (Alpine.js `x-show`) filtering is only for
+  bounded, admin-sized tables (`/admin/subnets`). Unbounded/append-only
+  tables (`/admin/audit-log`) require real server-side pagination and
+  filtering — don't default to the subnets pattern there.
+- **Semantic color**: use Oat's theme CSS variables (`var(--primary)`,
+  `var(--warning)`, `var(--danger)`, `var(--success)`, `var(--muted)`,
+  `var(--border)`) for any status/utilization coloring, never hardcoded
+  hex/rgba — they adapt to dark mode automatically. For inline alert
+  callouts, prefer `role="alert" data-variant="warning"` (Oat's native
+  alert styling) over manual background/border CSS.
+- **Utilization display**: a native `<meter>` can only show one
+  value/color-state, so it can't represent used+reserved+free at once.
+  The subnets list instead uses a custom stacked/segmented bar (flex
+  divs, per-segment `width: %`, Oat theme variable backgrounds) with a
+  text line underneath and no separate color legend — the bar's `title`
+  tooltips plus the text line are considered self-explanatory. Reuse
+  this pattern rather than `<meter>` for any future multi-state
+  utilization display.
 
 ## Key Workflow Notes
 
@@ -203,6 +241,10 @@ workflows (mirrors the Eraser diagrams in plain text).
   determines the subnet via admin-configured, scheme-scoped mapping; IP
   is auto-assigned (next free address in the subnet, transactional,
   skipping reserved IPs).
+- `subnets.active` is a soft-retire flag: `0` blocks new allocations and
+  excludes the subnet from CIDR overlap validation, but existing
+  allocations against it stay valid. An inactive subnet fails an
+  approval with a distinct error from subnet exhaustion.
 - Naming schemes have a `naming_mode`: `generated` (Server, Network
   Device, VM) computes a fixed-length hostname (15 chars, no separators)
   from site+env+app+role dropdowns at approval time, using a per-prefix

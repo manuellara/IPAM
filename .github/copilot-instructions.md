@@ -212,6 +212,14 @@ window batch API) — those are explicitly NOT single transactions.
    `ip_allocations` rows, bypassing the request/approval flow — every
    allocation path must populate `ip_allocations.server_id`, not just the
    request-driven one.
+5. **`subnets.active` is a soft-retire flag, not a delete.** `active = 0`
+   blocks NEW allocations from that subnet and excludes it from CIDR
+   overlap validation (so a retired range can be legitimately reused by a
+   brand new subnet) — but existing `ip_allocations` rows against it stay
+   valid and unaffected. An approval mapped to an inactive subnet fails
+   with a distinct "subnet is inactive" error, separate from subnet
+   exhaustion (same underlying symptom — no allocation happens — but a
+   different cause and a different fix for the admin).
 
 ## Naming convention
 
@@ -294,19 +302,51 @@ repeatedly failing their login on purpose).
   admin-direct allocation. Always set `source` explicitly on every
   allocation path — never leave it to be inferred. `ip_allocations.server_id`
   links every allocation to its server regardless of origin.
+- **`servers.asset_type`** (`'server'` or `'virtual_ip'`) distinguishes
+  real, patchable machines from F5 Virtual Server VIPs. For
+  `source = 'request'` rows, derived automatically from the originating
+  naming scheme's `naming_mode` (`generated` → `server`, `manual` →
+  `virtual_ip`). For the other three sources, an admin sets it explicitly,
+  defaulting to `server`. **This is a structural guarantee for
+  maintenance-window rule matching** — see below.
+- **`servers.site_code`/`env_code`/`app_code`/`role_code`** are
+  denormalized onto `servers` (not looked up via `request_id` →
+  `requests`) specifically so rule-based maintenance window matching
+  works identically across all four origins, not just request-provisioned
+  servers. For `source = 'request'` rows, copied automatically from the
+  approved request at approval time. For the other three sources,
+  optional — an admin can tag a legacy/manually-registered server to make
+  it rule-eligible, or leave `NULL`. **`NULL` on any of these fields NEVER
+  wildcard-matches a rule** — fails closed; an untagged server can only be
+  covered by a window's static list, never a rule.
 - **`maintenance_windows`** uses RFC 5545 RRULE (`teambition/rrule-go` for
   expansion, don't hand-roll recurrence math). `rrule` is nullable — NULL
   means a one-time occurrence at `dtstart` for `duration_minutes` (for
   orgs whose blackout dates are computed externally each period rather
   than truly periodic, e.g. payroll cycles shifting around holidays).
-  `maintenance_window_servers` is a join table — one window can cover many
-  servers.
-- **The RRULE builder UI is a deliberate Alpine.js case** — selecting
-  `FREQ=MONTHLY` vs `FREQ=WEEKLY` should reveal different fields
-  immediately, client-side, no server round-trip. Don't build this as a
-  pure htmx flow. Pair it with a live occurrence-preview fragment
-  (`POST /admin/maintenance-windows/preview`) — RRULE strings are easy to
-  get subtly wrong.
+- **A window's effective server set is the UNION of two membership
+  mechanisms**, not just one:
+  - `maintenance_window_servers` — a static, explicit join table (one
+    window, many servers, hand-picked).
+  - `maintenance_window_rules` — rule-based membership (`site_code`/
+    `env_code`/`app_code`/`role_code`, each nullable = wildcard). Multiple
+    rules on one window are OR'd together. Example: a rule with only
+    `env_code = 'PRD'` and `app_code = 'PAY'` set (site and role left
+    NULL/wildcard) matches every PRD payroll server regardless of site or
+    role — and stays correct as new matching servers get provisioned
+    later, unlike a static list which needs manual upkeep per new server.
+  - **Rule matching NEVER considers `asset_type = 'virtual_ip'` rows —
+    this is a hard `WHERE` clause in the matching query, not something a
+    rule's own field values can express or override.** An F5 VIP can
+    still be covered by a window via the static list if explicitly added,
+    just never via a rule, no matter how broad that rule's wildcards are.
+- **The RRULE builder UI and the rule builder UI are both deliberate
+  Alpine.js cases** — selecting `FREQ=MONTHLY` vs `FREQ=WEEKLY`, or adding
+  another site/env/app/role rule row, should update immediately,
+  client-side, no server round-trip. Don't build either as a pure htmx
+  flow. Pair both with live preview fragments (occurrence preview for
+  RRULE, matching-server-count preview for rules) — both RRULE strings
+  and rule wildcards are easy to get subtly wrong.
 - **`/api/maintenance/blocked` and `/allowed` must include each server's
   `description` in the response**, not just hostname — deliberate: a human
   consuming the response (e.g. reviewing tonight's deployment list) uses
@@ -327,6 +367,39 @@ repeatedly failing their login on purpose).
 - **`POST /api/maintenance-windows` and CSV import are per-item, not
   all-or-nothing** — one bad item in a batch shouldn't fail the rest;
   report per-item success/failure.
+
+## Admin list/form UI conventions (Cycle 3, subnets)
+
+- **Oat CSS theme variables** — use `var(--primary)`, `var(--warning)`,
+  `var(--danger)`, `var(--success)`, `var(--muted)`, `var(--border)`
+  for any semantic coloring (status, utilization bars, alerts), never
+  hardcoded hex/rgba — they adapt to dark mode automatically. For
+  inline alert callouts prefer native `role="alert"
+  data-variant="warning"` styling over manual background/border CSS.
+- **Multi-state utilization** (used/reserved/free) is rendered as a
+  custom stacked/segmented bar (flex divs, per-segment `width: %`, Oat
+  theme variable backgrounds) — a native `<meter>` can only represent
+  one value/color-state and can't do three at once. No separate color
+  legend; the bar's `title` tooltips plus a text line underneath are
+  self-explanatory.
+- **Pagination**: client-side Alpine.js `x-show` filtering is only for
+  bounded, admin-configured tables (`/admin/subnets`, naming schemes,
+  site+env mappings, users). Unbounded/append-only tables
+  (`/admin/audit-log`) require real server-side pagination and
+  filtering — don't default to the subnets pattern there.
+- **Domain math placement**: CIDR parsing/overlap validation
+  (`internal/subnets/validate.go`) and utilization math
+  (`internal/subnets/utilization.go`, `ComputeUtilization`: `capacity =
+  total_addresses - 2 - reserved_count`, `free = capacity -
+  used_count`, both floor at 0) belong in `internal/subnets` — never in
+  the views/admin package. Presentation-only helpers (percent
+  formatting, row styling, comma-list reformatting) belong in the
+  views/admin package next to the templ that uses them.
+- See `.github/instructions/queries.instructions.md` for the SQLite
+  aggregate-function gotchas (`COUNT(DISTINCT)` fan-out,
+  `GROUP_CONCAT`/`COALESCE`/`CAST` pattern, DISTINCT-can't-take-a-
+  separator) surfaced while building the subnets list query — they'll
+  recur on the next admin list page that joins and aggregates.
 
 ## Things Copilot should NOT suggest
 
@@ -401,3 +474,36 @@ repeatedly failing their login on purpose).
   a deliberate choice, not something to "improve."
 - Don't apply rate limiting to OIDC — it never receives a password
   through IPAM.
+- Don't let a `NULL` field on a `servers` row act as a wildcard match
+  against a `maintenance_window_rules` row — wildcarding only applies to
+  `NULL` fields on the RULE, never on the server. An unclassified server
+  must be explicitly tagged before it's rule-eligible.
+- Don't allow `maintenance_window_rules` matching to include
+  `asset_type = 'virtual_ip'` servers under any circumstance, even if a
+  rule's wildcards would otherwise match — this exclusion belongs in the
+  query's `WHERE` clause, not as conditional logic a rule could bypass.
+- Don't infer `servers.asset_type` from whether `app_code`/`role_code`
+  happen to be `NULL` — it's an explicit column, set directly (derived
+  from `naming_mode` for request-sourced servers, admin-chosen for the
+  other three sources).
+- Don't allow saving a `maintenance_window_rules` row with all four
+  fields left as wildcard (`NULL`) — that matches every server and is
+  almost certainly a mistake; require at least one field set.
+- Don't include inactive (`active = 0`) subnets in CIDR overlap
+  validation — they're deliberately excluded so a retired range can be
+  reused.
+- Don't skip the `subnets.active` check in the allocation transaction —
+  an inactive subnet must block new allocations even if it technically
+  has free addresses, and that failure must be distinguishable from
+  exhaustion, not the same error message.
+- Don't treat deactivating a subnet as requiring existing allocations to
+  be released first — it's a soft-retire; existing `ip_allocations` rows
+  against it remain valid.
+- Don't build a multi-state (used/reserved/free) utilization indicator
+  with a native `<meter>` — it can only show one value/color-state.
+  Use the stacked-bar pattern instead.
+- Don't ship `/admin/audit-log` (or any future unbounded/append-only
+  admin list) with client-side-only filtering like the subnets page —
+  it needs real server-side pagination.
+- Don't hardcode hex/rgba colors in admin UI for status/utilization —
+  use Oat's theme CSS variables so it stays correct in dark mode.

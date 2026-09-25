@@ -18,6 +18,10 @@ treat it as documentation that ships with the code, same as `routes.md`.
 4. Approver opens the queue, reviews, and either:
 
    **Approves** — one DB transaction:
+   - Check the mapped subnet's `active` flag first — an inactive
+     (soft-retired) subnet fails the approval immediately with a distinct
+     "subnet is inactive" error, separate from exhaustion, even if it
+     technically still has free addresses.
    - Allocate the next available IP in the mapped subnet (skip reserved +
      already-allocated IPs).
    - **Branch by the naming scheme's `naming_mode`:**
@@ -77,6 +81,92 @@ skip this entirely, see above.)*
   for reserving IPs for F5 LTM virtual servers (VIP name + IP, no
   NetBIOS-style hostname generation). The design supports more manual-mode
   schemes later without further schema changes.
+
+## Subnet Lifecycle
+
+`subnets.active` is a **soft-retire** flag, not a delete:
+- `active = 0` blocks **new** allocations from that subnet, and excludes
+  it from CIDR overlap validation entirely — this is what lets a
+  legitimately retired address range be reused by a brand new subnet
+  without being falsely blocked by its own retired history.
+- Existing `ip_allocations` rows against an inactive subnet **remain
+  valid and are unaffected** — deactivating doesn't require releasing
+  anything first.
+- An approval mapped to an inactive subnet fails with a distinct "subnet
+  is inactive" error at allocation time, separate from **exhaustion**
+  (an active subnet with genuinely no free addresses left) — same
+  symptom (no allocation happens), different cause, different admin
+  fix (reconfigure the mapping vs. add capacity).
+
+## Subnet Admin UI (list + add/edit form)
+
+- **CIDR overlap validation** happens entirely in Go
+  (`internal/subnets/validate.go`: `ParseCIDR`, `ValidateNoOverlap`,
+  `ValidateSubnet`), never in SQL. `ParseCIDR` masks the input
+  (`netip.ParsePrefix(...).Masked()`) before comparing, so host-bit
+  noise in the submitted CIDR can't cause a false negative.
+  `ValidateNoOverlap` only checks against **active** subnets and
+  excludes the subnet's own ID on edit. Since CIDR blocks can only be
+  identical, fully-containing, or fully-disjoint (never partially
+  overlapping), `netip.Prefix.Overlaps` alone is a sufficient check.
+- **Deactivating a subnet**: the edit form loads
+  `CountActiveAllocationsForSubnet` for that subnet and, if the admin
+  unchecks "active" while that count is > 0, shows a themed warning
+  (`role="alert" data-variant="warning"`) explaining that deactivating
+  only blocks *new* allocations — existing ones are unaffected. This is
+  advisory, not a blocking confirmation: deactivation is not destructive
+  to existing data, so no extra confirm step is required.
+- **List page utilization**: `ListSubnetsWithCounts` (see
+  `queries.instructions.md` for the SQL aggregate gotchas behind its
+  shape) returns `reserved_count`, `used_count`, and a comma-joined
+  `site_envs` string per subnet.
+  `subnets.ComputeUtilization(prefix, reservedCount, usedCount)`
+  (`internal/subnets/utilization.go`) turns that into `capacity`,
+  `used`, `reserved`, `free`:
+  - `capacity = total_addresses_in_cidr - 2 (network + broadcast) - reserved_count`
+  - `free = capacity - used_count`
+  - both floor at 0 (a `/31` naturally computes 0 capacity; a `/32` is
+    clamped to 0 — both fine, unlikely in practice).
+  - This math is domain logic and lives in `internal/subnets`, not the
+    views/admin package — presentation-only helpers (percent
+    formatting, row styling, comma-list reformatting for display) stay
+    in the views/admin package next to the templ that uses them.
+- **Rendering**: shown as a custom stacked/segmented bar (allocated /
+  reserved / free), not a native `<meter>` (which can only represent one
+  value/color-state, not three at once), colored with Oat theme
+  variables (`var(--primary)`, `var(--warning)`, `var(--muted)`), plus a
+  text line underneath (`"N allocated · N reserved · P%"`). No separate
+  color legend — the bar's `title` tooltips and the text line are
+  self-explanatory.
+- **Filtering** on the list page is client-side (Alpine.js `x-show`
+  against a `data-search` attribute built from CIDR + label +
+  site/envs) — acceptable because this table is admin-sized and
+  bounded. See "Admin List Pagination Convention" below before copying
+  this pattern onto an unbounded table.
+- **Still ahead in this cycle** (not yet built): reserved/excluded IPs
+  within a subnet; auto-assign next available IP (must also check
+  `subnets.active`, distinctly from exhaustion); subnet exhaustion
+  handling; CSV export of allocations; a site+env-to-subnet mapping
+  admin UI (schema already supports per-naming-scheme scoping).
+
+## Admin List Pagination Convention
+
+Whether an admin list page needs real pagination depends on whether the
+underlying table is bounded or unbounded:
+
+- **Bounded / admin-configured** tables (subnets, naming schemes, site+env
+  mappings, users) — the row count is inherently small and grows only as
+  fast as an admin manually adds rows. Client-side Alpine.js `x-show`
+  filtering over the full rendered list is fine; there's no realistic
+  row count where this becomes a performance problem.
+- **Unbounded / append-only** tables (`audit_log`, and any future
+  history/log-style table) — row count grows continuously and
+  unboundedly with usage. These require real server-side pagination and
+  filtering (query-param-driven `LIMIT`/`OFFSET` or keyset pagination,
+  plus server-side filter params) — never ship one of these with
+  client-side-only filtering over an unbounded result set. This is why
+  `/admin/audit-log` is tracked as its own work item rather than reusing
+  the subnets list's approach.
 
 ## Authentication Flow
 
@@ -242,12 +332,40 @@ Callers need both `*db.Queries` (for normal reads) and the raw `*sql.DB`
   themselves from each other (`request_id NULL` alone is ambiguous
   between manual entry, CSV import, and admin-direct allocation). Every
   allocation path must set `ip_allocations.server_id`.
+- `servers.asset_type` (`server` or `virtual_ip`) distinguishes real,
+  patchable machines from F5 Virtual Server VIPs. For `source = request`
+  rows, derived automatically from the originating naming scheme's
+  `naming_mode` (`generated` → `server`, `manual` → `virtual_ip`). For
+  the other three sources, an admin sets it explicitly (default `server`).
+- `servers.site_code`/`env_code`/`app_code`/`role_code` are denormalized
+  onto `servers` itself (not looked up via `requests`), so rule-based
+  maintenance window matching (below) works identically regardless of a
+  server's origin. For `source = request` rows, copied automatically from
+  the approved request. For the other three sources, optional — an admin
+  can tag a legacy server to make it rule-eligible. `NULL` on any of
+  these fields never wildcard-matches a rule; an untagged server can only
+  be covered by a window's static list.
 - `maintenance_windows` uses RFC 5545 RRULE (`teambition/rrule-go`).
   `rrule` nullable — `NULL` means a one-time occurrence at `dtstart` for
   `duration_minutes` (for blackout dates computed externally/manually each
   period, e.g. payroll cycles shifting around holidays, rather than truly
-  periodic). One window can cover many servers via
-  `maintenance_window_servers`.
+  periodic).
+- **A window's effective server set is the UNION of two mechanisms:**
+  1. `maintenance_window_servers` — static, explicit, hand-picked list.
+  2. `maintenance_window_rules` — rule-based membership. Each rule has
+     `site_code`/`env_code`/`app_code`/`role_code`, all nullable
+     (`NULL` = wildcard, matches any value for that field). Multiple
+     rules on one window are OR'd. Example: `env_code = 'PRD'`,
+     `app_code = 'PAY'`, site and role left NULL → matches every PRD
+     payroll server, any site, any role — and stays correct as new
+     matching servers are provisioned later, unlike a static list which
+     needs manual upkeep every time a new matching server appears.
+  - **Rule matching hard-excludes `asset_type = 'virtual_ip'`** — a
+    `WHERE` clause in the matching query, not conditional logic a rule's
+    field values could bypass. An F5 VIP is never patchable and must
+    never be swept into a rule-based window regardless of what
+    site/env/app/role it happens to carry. It can still be added to a
+    window's static list explicitly, just never matched by a rule.
 - `GET /api/maintenance/blocked` and `/allowed` (API-key auth, `read`
   scope) return `[{hostname, description, reason}]` — `description`
   included deliberately so a human reviewing the response (e.g. before
@@ -255,8 +373,11 @@ Callers need both `*db.Queries` (for normal reads) and the raw `*sql.DB`
   server.
 - `POST /api/maintenance-windows` (`write` scope) batch-creates windows
   programmatically — e.g. an external payroll system pushing its own
-  computed cycle dates. Per-item success/failure, not all-or-nothing.
-  References servers by hostname, not internal ID.
+  computed cycle dates, along with a rule like `{env: "PRD", app: "PAY"}`
+  instead of a human re-selecting every matching server by hand. Accepts
+  both `hostnames` (static list) and `rules` arrays. Per-item
+  success/failure, not all-or-nothing. References servers by hostname,
+  not internal ID.
 - This API is general-purpose, not built around any specific vendor's
   tooling.
 - `api_keys` stores a hash, never plaintext — opposite trust model from

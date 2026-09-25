@@ -74,7 +74,10 @@ CREATE TABLE subnets (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     cidr       TEXT NOT NULL UNIQUE,     -- e.g. "10.20.4.0/24", validated + overlap-checked in Go via net/netip
     label      TEXT,
-    active     INTEGER NOT NULL DEFAULT 1,
+    active     INTEGER NOT NULL DEFAULT 1,  -- soft-retire: 0 blocks NEW allocations and is excluded from
+                                             -- overlap validation (so a retired range can be legitimately
+                                             -- reused by a new subnet); existing ip_allocations rows against
+                                             -- an inactive subnet remain valid and are NOT affected
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -230,14 +233,43 @@ END;
 -- the latter three all have request_id NULL, so `source` is what
 -- distinguishes them from each other. This is the central object that
 -- maintenance windows and other future features attach to, independent
--- of how the server came to exist. Also used for F5 Virtual Server
--- entries (hostname holds the VIP name in that case).
+-- of how the server came to exist.
+--
+-- asset_type distinguishes real, patchable machines ('server') from F5
+-- Virtual Server VIPs ('virtual_ip'), which are never patchable and must
+-- never be eligible for maintenance_window_rules matching regardless of
+-- what site/env/app/role values happen to be populated -- this is a
+-- structural guarantee (a WHERE clause on asset_type), not an inference
+-- from which fields are NULL. For source='request' rows, asset_type is
+-- derived automatically from the originating naming scheme's
+-- naming_mode ('generated' -> 'server', 'manual' -> 'virtual_ip'). For
+-- the other three sources, an admin picks it explicitly at creation,
+-- defaulting to 'server'.
+--
+-- site_code/env_code/app_code/role_code are denormalized here (not
+-- looked up via request_id -> requests) so rule-based maintenance window
+-- matching (maintenance_window_rules) works identically across all four
+-- origins, not just request-provisioned servers. For source='request'
+-- rows these are copied automatically from the approved request. For
+-- the other three sources they are optional -- an admin can tag a
+-- legacy/manually-registered server the same way if they want it
+-- eligible for rule-based windows, or leave them NULL and rely on the
+-- static maintenance_window_servers list only. NULL on any of these
+-- fields never acts as a wildcard match against a rule -- it fails
+-- closed: an unclassified server can only be covered by adding it to a
+-- window's static list explicitly, never by a rule, no matter how broad
+-- that rule's wildcards are.
 ----------------------------------------------------------------------
 CREATE TABLE servers (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     hostname    TEXT NOT NULL UNIQUE,
     request_id  INTEGER REFERENCES requests(id),  -- set only when source = 'request'
     source      TEXT NOT NULL CHECK (source IN ('request','manual','csv_import','admin_direct')),
+    asset_type  TEXT NOT NULL CHECK (asset_type IN ('server','virtual_ip')) DEFAULT 'server',
+    site_code   TEXT,  -- optional for non-request sources; NULL never wildcard-matches a rule
+    env_code    TEXT,
+    app_code    TEXT,
+    role_code   TEXT,
     description TEXT,                              -- context, especially for non-IPAM-provisioned servers
     created_by  INTEGER REFERENCES users(id),
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
@@ -382,6 +414,30 @@ CREATE TABLE maintenance_window_servers (
     window_id INTEGER NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,
     server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
     PRIMARY KEY (window_id, server_id)
+);
+
+-- Rule-based membership, additive to the static list above (a window's
+-- effective server set is the UNION of both). Each row is one rule;
+-- multiple rules on the same window are OR'd together. Within a single
+-- rule, a NULL field is a wildcard ("any site", "any env", etc.) -- but
+-- this wildcarding only ever broadens which SERVERS a rule can match; it
+-- never causes a server with a NULL field to match (see the NULL
+-- fail-closed comment on servers above -- that's a property of the
+-- server row, not the rule).
+--
+-- Matching NEVER considers servers.asset_type = 'virtual_ip' -- this is
+-- a hard, structural exclusion in the matching query (WHERE asset_type =
+-- 'server'), not something expressible or overridable via a rule's own
+-- fields. F5 Virtual Server VIPs are never patchable and must never be
+-- swept into a rule-based window, regardless of what site/env/app/role
+-- values a VIP's servers row happens to carry.
+CREATE TABLE maintenance_window_rules (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    window_id INTEGER NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,
+    site_code TEXT,   -- NULL = any site
+    env_code  TEXT,   -- NULL = any env
+    app_code  TEXT,   -- NULL = any app
+    role_code TEXT    -- NULL = any role
 );
 
 ----------------------------------------------------------------------

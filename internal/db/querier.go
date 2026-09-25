@@ -10,21 +10,51 @@ import (
 
 type Querier interface {
 	AssignViewerRole(ctx context.Context, userID int64) error
+	// Used for the deactivate warning: how many currently-active allocations
+	// would be "orphaned" (still valid, but on a subnet no longer accepting
+	// new ones) if this subnet is soft-retired. Informational only --
+	// does not block deactivation.
+	CountActiveAllocationsForSubnet(ctx context.Context, subnetID int64) (int64, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
 	CreateLDAPUser(ctx context.Context, arg CreateLDAPUserParams) (User, error)
 	CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error)
 	CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error)
+	CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Subnet, error)
 	GetLDAPConfig(ctx context.Context) (LdapConfig, error)
 	GetLDAPUser(ctx context.Context, ldapDn *string) (User, error)
 	GetLocalAdminUser(ctx context.Context) (User, error)
 	GetLoginAttempt(ctx context.Context, arg GetLoginAttemptParams) (LoginAttempt, error)
 	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
 	GetOIDCUser(ctx context.Context, oidcSubject *string) (User, error)
+	GetSubnet(ctx context.Context, id int64) (Subnet, error)
 	GetUserRoleNames(ctx context.Context, userID int64) ([]string, error)
+	// Used for CIDR overlap validation on create/edit -- only ACTIVE subnets
+	// are checked, per subnets.active semantics: a retired range can be
+	// legitimately reused by a new subnet without being falsely blocked by
+	// its own retired history.
+	ListActiveSubnets(ctx context.Context) ([]ListActiveSubnetsRow, error)
+	// Three LEFT JOINs (reserved IPs, active allocations, active site+env
+	// mappings) produce a cross product of matching rows per subnet. Each
+	// aggregate below is DISTINCT on its own join's identifying value, so
+	// extra rows introduced by the OTHER joins never inflate a given
+	// aggregate. Do not change these to plain COUNT(*)/GROUP_CONCAT(*) --
+	// the numbers will look plausible but be wrong.
+	//
+	// site_envs is wrapped in CAST(... AS TEXT): sqlc's type inferencer
+	// can't determine a concrete type for COALESCE(GROUP_CONCAT(...), '')
+	// on its own and falls back to interface{} (loses type safety). The
+	// explicit CAST forces a clean string inference instead. COALESCE
+	// handles the NULL GROUP_CONCAT returns when a subnet has zero matching
+	// mapping rows. GROUP_CONCAT(DISTINCT ...) can only take one argument in
+	// SQLite -- a custom separator is NOT allowed alongside DISTINCT, so
+	// this comes back comma-separated with no space; formatted for display
+	// (", ") in Go instead, see displaySiteEnvs in the admin view.
+	ListSubnetsWithCounts(ctx context.Context) ([]ListSubnetsWithCountsRow, error)
 	RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) error
 	ResetLoginAttempts(ctx context.Context, arg ResetLoginAttemptsParams) error
 	UpdateLDAPConfig(ctx context.Context, arg UpdateLDAPConfigParams) error
 	UpdateOIDCConfig(ctx context.Context, arg UpdateOIDCConfigParams) error
+	UpdateSubnet(ctx context.Context, arg UpdateSubnetParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error
 }
 

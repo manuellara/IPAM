@@ -1,0 +1,85 @@
+package admin
+
+import (
+	"fmt"
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/middleware"
+)
+
+// SubnetFormData carries the form's current values (submitted or
+// pre-filled from an existing row) plus edit-only context. IsEdit=false
+// means this is the /new form -- the active toggle and allocation-count
+// warning are hidden entirely in that case, not just disabled, since a
+// brand-new subnet is always active and has no allocations yet.
+type SubnetFormData struct {
+	ID                    int64 // 0 for new
+	IsEdit                bool
+	CIDR                  string
+	Label                 string
+	Active                bool
+	ActiveAllocationCount int64 // only meaningful when IsEdit
+	ErrMsg                string
+}
+
+templ SubnetFormPage(principal middleware.Principal, data SubnetFormData) {
+	@shared.Boilerplate("IPAM — Subnets") {
+		@shared.Layout(shared.Sidebar(principal), SubnetFormMain(data))
+	}
+}
+
+templ SubnetFormMain(data SubnetFormData) {
+	<div class="container">
+		<header style="margin-bottom: 1.5rem;">
+			if data.IsEdit {
+				<h1 style="margin-bottom: 0;">Edit Subnet</h1>
+			} else {
+				<h1 style="margin-bottom: 0;">New Subnet</h1>
+			}
+			<p style="margin-top: 0.5rem; opacity: 0.72;">
+				if data.IsEdit {
+					Update the subnet range and its active status.
+				} else {
+					Create a new subnet range for IP allocation.
+				}
+			</p>
+		</header>
+		if data.ErrMsg != "" {
+			<div class="error mb-4" role="alert" data-variant="error" style="margin-bottom: 1rem;">
+				<strong>Error!</strong> { data.ErrMsg }
+			</div>
+		}
+		<section style="max-width: 42rem; margin: 0 auto;">
+			<form
+				method="POST"
+				if data.IsEdit {
+					action={ templ.URL(fmt.Sprintf("/admin/subnets/%d", data.ID)) }
+				} else {
+					action="/admin/subnets"
+				}
+				style="display: block;"
+			>
+				<fieldset style="border: 1px solid rgba(17, 24, 39, 0.16); border-radius: 0.75rem; padding: 1.25rem 1.25rem 1rem; background: rgba(255, 255, 255, 0.02);">
+					<legend style="padding: 0 0.5rem; font-weight: 600;">Subnet details</legend>
+					<label for="cidr" style="display: block; margin-top: 0.5rem; margin-bottom: 0.35rem; font-weight: 600;">CIDR</label>
+					<input type="text" id="cidr" name="cidr" value={ data.CIDR } placeholder="10.20.4.0/24" required autocomplete="off" style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+					<label for="label" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Label</label>
+					<input type="text" id="label" name="label" value={ data.Label } autocomplete="off" style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+					if data.IsEdit {
+						<div style="display: block; margin-bottom: 0.75rem;">
+							<label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; margin: 0;">
+								<input type="checkbox" role="switch" name="active" value="1" checked?={ data.Active }/>
+								Active
+							</label>
+						</div>
+						if data.ActiveAllocationCount > 0 {
+							<p role="alert" data-variant="warning" style="margin: 0.25rem 0 0.75rem;">
+								{ fmt.Sprintf("This subnet has %d active allocation(s). Deactivating will block NEW allocations but existing ones remain valid.", data.ActiveAllocationCount) }
+							</p>
+						}
+					}
+					<button type="submit" style="display: block; margin-top: 0.5rem;">Save</button>
+				</fieldset>
+			</form>
+		</section>
+	</div>
+}

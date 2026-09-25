@@ -78,6 +78,15 @@ type MaintenanceWindow struct {
 	CreatedAt       string  `json:"created_at"`
 }
 
+type MaintenanceWindowRule struct {
+	ID       int64   `json:"id"`
+	WindowID int64   `json:"window_id"`
+	SiteCode *string `json:"site_code"`
+	EnvCode  *string `json:"env_code"`
+	AppCode  *string `json:"app_code"`
+	RoleCode *string `json:"role_code"`
+}
+
 type MaintenanceWindowServer struct {
 	WindowID int64 `json:"window_id"`
 	ServerID int64 `json:"server_id"`
@@ -145,6 +154,11 @@ type Server struct {
 	Hostname    string  `json:"hostname"`
 	RequestID   *int64  `json:"request_id"`
 	Source      string  `json:"source"`
+	AssetType   string  `json:"asset_type"`
+	SiteCode    *string `json:"site_code"`
+	EnvCode     *string `json:"env_code"`
+	AppCode     *string `json:"app_code"`
+	RoleCode    *string `json:"role_code"`
 	Description *string `json:"description"`
 	CreatedBy   *int64  `json:"created_by"`
 	CreatedAt   string  `json:"created_at"`

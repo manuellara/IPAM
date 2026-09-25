@@ -1,0 +1,130 @@
+package admin
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/middleware"
+	"github.com/manuellara/ipam/internal/subnets"
+)
+
+// SubnetRow is the view-model for one row of the subnets list -- resolved
+// (non-pointer) fields plus computed utilization, kept separate from the
+// raw sqlc row so the templ doesn't need to know about DB nullability.
+type SubnetRow struct {
+	ID       int64
+	CIDR     string
+	Label    string
+	Active   bool
+	SiteEnvs string
+	Util     subnets.SubnetUtilization
+}
+
+templ SubnetsListPage(principal middleware.Principal, rows []SubnetRow) {
+	@shared.Boilerplate("IPAM — Subnets") {
+		@shared.Layout(shared.Sidebar(principal), SubnetsListMain(rows))
+	}
+}
+
+templ SubnetsListMain(rows []SubnetRow) {
+	<div class="container" x-data="{ search: '' }">
+		<header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+			<div>
+				<h1 style="margin-bottom: 0;">Subnets</h1>
+				<p style="margin-top: 0; opacity: 0.72;">CIDR ranges available for allocation, with current utilization.</p>
+				<div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-top: 1rem;">
+					<label style="margin: 0; vertical-align: middle;">
+						<input type="search" x-model="search" placeholder="Search CIDR, label, or site/env" aria-label="Search subnets"/>
+					</label>
+				</div>
+			</div>
+			<a href="/admin/subnets/new" class="button">New Subnet</a>
+		</header>
+		<table>
+			<thead>
+				<tr>
+					<th>CIDR</th>
+					<th>Label</th>
+					<th>Site/Env</th>
+					<th>Status</th>
+					<th>Utilization</th>
+					<th>Free</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, row := range rows {
+					<tr x-show={ fmt.Sprintf("!search || $el.dataset.search.includes(search.toLowerCase())") } data-search={ strings.ToLower(strings.Join([]string{row.CIDR, row.Label, row.SiteEnvs}, " ")) } style={ templ.SafeCSS(rowStyle(row.Active)) }>
+						<td><code>{ row.CIDR }</code></td>
+						<td>{ row.Label }</td>
+						<td>{ displaySiteEnvs(row.SiteEnvs) }</td>
+						<td>
+							if row.Active {
+								<span class="badge">Active</span>
+							} else {
+								<span class="badge badge-muted">Inactive</span>
+							}
+						</td>
+						<td>
+							{{ usedPct, reservedPct, freePct := barSegments(row.Util) }}
+							<div style="display: flex; width: 100%; height: 0.5rem; border-radius: 4px; overflow: hidden; background: var(--border);">
+								<div style={ templ.SafeCSS(fmt.Sprintf("width: %.2f%%; background: var(--primary);", usedPct)) } title="Allocated"></div>
+								<div style={ templ.SafeCSS(fmt.Sprintf("width: %.2f%%; background: var(--warning);", reservedPct)) } title="Reserved"></div>
+								<div style={ templ.SafeCSS(fmt.Sprintf("width: %.2f%%; background: var(--muted);", freePct)) } title="Free"></div>
+							</div>
+							<div style="font-size: 0.85em; opacity: 0.7; margin-top: 0.25rem;">
+								{ fmt.Sprintf("%d allocated · %d reserved · %d%%", row.Util.Used, row.Util.Reserved, percentUsed(row.Util.Used, row.Util.Capacity)) }
+							</div>
+						</td>
+						<td>{ fmt.Sprint(row.Util.Free) }</td>
+						<td><a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/edit", row.ID)) }>Edit</a></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		if len(rows) == 0 {
+			<p style="opacity: 0.72; text-align: center; margin-top: 2rem;">No subnets yet.</p>
+		}
+	</div>
+}
+
+// rowStyle returns the CSS style for a subnet row based on its active status. Inactive rows are displayed with reduced opacity.
+func rowStyle(active bool) string {
+	if active {
+		return ""
+	}
+	return "opacity: 0.6;"
+}
+
+// percentUsed returns used/capacity as a rounded percentage, 0 if
+// capacity is 0 (avoids a divide-by-zero for /31 and /32 edge cases).
+func percentUsed(used, capacity int) int {
+	if capacity == 0 {
+		return 0
+	}
+	return (used*100 + capacity/2) / capacity
+}
+
+// displaySiteEnvs reformats the query's comma-separated site/env pairs
+// (no space, since GROUP_CONCAT(DISTINCT ...) can't take a custom
+// separator in SQLite) into a more readable comma-space list for display.
+func displaySiteEnvs(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	return strings.ReplaceAll(raw, ",", ", ")
+}
+
+// barSegments returns the allocated/reserved/free percentages (summing
+// to ~100) for the stacked utilization bar, based on the subnet's total
+// non-network/broadcast address space (Reserved + Used + Free). Returns
+// all zeros if that total is 0 (e.g. a /31 or /32 edge case).
+func barSegments(u subnets.SubnetUtilization) (usedPct, reservedPct, freePct float64) {
+	total := u.Reserved + u.Used + u.Free
+	if total == 0 {
+		return 0, 0, 0
+	}
+	t := float64(total)
+	return float64(u.Used) / t * 100, float64(u.Reserved) / t * 100, float64(u.Free) / t * 100
+}

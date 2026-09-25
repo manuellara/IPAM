@@ -7,10 +7,11 @@ that also generates standardized hostnames.
 
 The project is currently under active development. The repository contains the
 database schema, embedded migrations, sqlc data-access layer, SQLite-backed
-sessions, middleware building blocks, and the initial HTTP server wiring. The
-current server exposes the local login/logout flow and `/healthz`; the broader
-request, approval, administration, and integration workflows are documented in
-[`docs/routes.md`](docs/routes.md) and are being implemented incrementally.
+sessions, middleware building blocks, and the main HTTP server wiring. The
+current app includes the unified login page with local admin sign-in, OIDC
+support, LDAP/AD support, logout, and the `/healthz` endpoint. The broader
+request, approval, maintenance-window, and administration flows are documented
+in [`docs/routes.md`](docs/routes.md).
 
 ## Features and design
 
@@ -21,6 +22,11 @@ request, approval, administration, and integration workflows are documented in
   idle timeout.
 - Local administrator authentication using Argon2id password hashes and
   audit-logged login/logout events.
+- Concurrent authentication sources: local administrator, OIDC, and LDAP/AD.
+  OIDC and LDAP settings are stored in singleton database tables and editable
+  by an administrator at runtime.
+- Unified login interface with local admin, LDAP, and SSO options rendered
+  conditionally in the same page.
 - Request and approval workflow for IP allocation.
 - Site and environment mappings so requesters do not choose IPs directly.
 - Reserved-address support and transactional allocation of the next free IP.
@@ -28,14 +34,11 @@ request, approval, administration, and integration workflows are documented in
   tokens plus per-prefix sequences.
 - Separate decommission approval flow; released IPs may be reused, but hostnames
   and sequence numbers are not.
-- Planned concurrent authentication sources: local administrator, OIDC, and
-  LDAP/AD. OIDC and LDAP settings are stored in singleton database tables and
-  are intended to be editable by an administrator at runtime.
 - OIDC and LDAP secrets are intentionally stored in plaintext in the database,
   so encrypted or protected backups are important because backup media will
   contain those credentials as well.
 - Additive roles: `admin`, `approver`, `requester`, and `viewer`.
-- Planned maintenance-window integration API using hashed API keys, with
+- Maintenance-window and external integration API using hashed API keys, with
   blocked/allowed server queries and batch window creation.
 
 ## Requirements
