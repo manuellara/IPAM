@@ -17,9 +17,21 @@ consumable by external integrations.
   foreign_keys = ON")` only applies to whichever single pooled connection
   happens to run it; when `sql.DB`'s pool later opens a fresh connection,
   that connection silently reverts to the default. The correct approach:
-  open with `?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000` in the
-  DSN — `mattn/go-sqlite3` applies these to every connection it opens.
+  open with `?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000&_txlock=immediate`
+  in the DSN — `mattn/go-sqlite3` applies these to every connection it opens.
   Don't add a redundant manual `PRAGMA` call alongside the DSN params.
+  **`_txlock=immediate`** (added in Cycle 3, for IP allocation) makes every
+  `db.WithTx` transaction acquire SQLite's write lock at `BEGIN` rather
+  than lazily on the first write — without it, a transaction that reads
+  before it writes (e.g. scanning for the next free IP before inserting
+  it) doesn't reserve the lock during the scan, so two concurrent
+  transactions can both compute the same "next free" value and only the
+  *second* `INSERT` fails (against a partial unique index, if one
+  exists) — correct, but a foreseeable failure that needs a retry.
+  With `_txlock=immediate`, the second transaction simply blocks until
+  the first commits, so `db.WithTx` needed no code changes to get this
+  guarantee everywhere it's already used (local admin bootstrap,
+  OIDC/LDAP provisioning, and now IP allocation).
   Also cap `db.SetMaxOpenConns()` to a modest number (5-10) — SQLite only
   supports one writer at a time regardless of pool size. There is no
   traditional network-style "connection pooling" need here (no auth
@@ -395,6 +407,17 @@ repeatedly failing their login on purpose).
   the views/admin package. Presentation-only helpers (percent
   formatting, row styling, comma-list reformatting) belong in the
   views/admin package next to the templ that uses them.
+- **`internal/subnets` stays DB-agnostic — never import `internal/db`
+  into it.** IP-allocation logic that genuinely needs `*db.Queries`
+  (loading a subnet's reserved/allocated IPs, inserting the allocation
+  row) lives in a separate package, `internal/allocation`, which
+  imports `internal/subnets` for the pure math (`NextFreeIP`,
+  `ErrSubnetInactive`, `ErrSubnetExhausted`) but keeps that DB
+  dependency out of `internal/subnets` itself. `internal/allocation`
+  functions take an already-tx-scoped `*db.Queries` and don't open
+  their own `db.WithTx` — they're meant to compose as one step inside
+  a larger transaction (allocate → increment naming sequence → write
+  audit log), not run standalone.
 - See `.github/instructions/queries.instructions.md` for the SQLite
   aggregate-function gotchas (`COUNT(DISTINCT)` fan-out,
   `GROUP_CONCAT`/`COALESCE`/`CAST` pattern, DISTINCT-can't-take-a-
