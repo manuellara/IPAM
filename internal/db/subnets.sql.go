@@ -10,7 +10,8 @@ import (
 )
 
 const countActiveAllocationsForSubnet = `-- name: CountActiveAllocationsForSubnet :one
-SELECT COUNT(*) FROM ip_allocations WHERE subnet_id = ? AND released_at IS NULL
+SELECT COUNT(*) FROM ip_allocations
+WHERE subnet_id = ?1 AND released_at IS NULL
 `
 
 // Used for the deactivate warning: how many currently-active allocations
@@ -24,9 +25,47 @@ func (q *Queries) CountActiveAllocationsForSubnet(ctx context.Context, subnetID 
 	return count, err
 }
 
+const createIPAllocation = `-- name: CreateIPAllocation :one
+INSERT INTO ip_allocations (subnet_id, ip_address, request_id, server_id)
+VALUES (
+    ?1,
+    ?2,
+    ?3,
+    ?4
+)
+RETURNING id, subnet_id, ip_address, request_id, server_id, allocated_at, released_at
+`
+
+type CreateIPAllocationParams struct {
+	SubnetID  int64  `json:"subnet_id"`
+	IpAddress string `json:"ip_address"`
+	RequestID *int64 `json:"request_id"`
+	ServerID  *int64 `json:"server_id"`
+}
+
+func (q *Queries) CreateIPAllocation(ctx context.Context, arg CreateIPAllocationParams) (IpAllocation, error) {
+	row := q.db.QueryRowContext(ctx, createIPAllocation,
+		arg.SubnetID,
+		arg.IpAddress,
+		arg.RequestID,
+		arg.ServerID,
+	)
+	var i IpAllocation
+	err := row.Scan(
+		&i.ID,
+		&i.SubnetID,
+		&i.IpAddress,
+		&i.RequestID,
+		&i.ServerID,
+		&i.AllocatedAt,
+		&i.ReleasedAt,
+	)
+	return i, err
+}
+
 const createSubnet = `-- name: CreateSubnet :one
 INSERT INTO subnets (cidr, label, active)
-VALUES (?, ?, 1)
+VALUES (?1, ?2, 1)
 RETURNING id, cidr, label, active, created_at
 `
 
@@ -49,7 +88,7 @@ func (q *Queries) CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Sub
 }
 
 const getSubnet = `-- name: GetSubnet :one
-SELECT id, cidr, label, active, created_at FROM subnets WHERE id = ?
+SELECT id, cidr, label, active, created_at FROM subnets WHERE id = ?1
 `
 
 func (q *Queries) GetSubnet(ctx context.Context, id int64) (Subnet, error) {
@@ -63,6 +102,35 @@ func (q *Queries) GetSubnet(ctx context.Context, id int64) (Subnet, error) {
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listActiveAllocatedIPsForSubnet = `-- name: ListActiveAllocatedIPsForSubnet :many
+SELECT ip_address
+FROM ip_allocations
+WHERE subnet_id = ?1 AND released_at IS NULL
+`
+
+func (q *Queries) ListActiveAllocatedIPsForSubnet(ctx context.Context, subnetID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveAllocatedIPsForSubnet, subnetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var ip_address string
+		if err := rows.Scan(&ip_address); err != nil {
+			return nil, err
+		}
+		items = append(items, ip_address)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listActiveSubnets = `-- name: ListActiveSubnets :many
@@ -91,6 +159,35 @@ func (q *Queries) ListActiveSubnets(ctx context.Context) ([]ListActiveSubnetsRow
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReservedIPsForSubnet = `-- name: ListReservedIPsForSubnet :many
+SELECT ip_address
+FROM subnet_reserved_ips
+WHERE subnet_id = ?1
+`
+
+func (q *Queries) ListReservedIPsForSubnet(ctx context.Context, subnetID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listReservedIPsForSubnet, subnetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var ip_address string
+		if err := rows.Scan(&ip_address); err != nil {
+			return nil, err
+		}
+		items = append(items, ip_address)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -176,7 +273,9 @@ func (q *Queries) ListSubnetsWithCounts(ctx context.Context) ([]ListSubnetsWithC
 }
 
 const updateSubnet = `-- name: UpdateSubnet :exec
-UPDATE subnets SET cidr = ?, label = ?, active = ? WHERE id = ?
+UPDATE subnets
+SET cidr = ?1, label = ?2, active = ?3
+WHERE id = ?4
 `
 
 type UpdateSubnetParams struct {

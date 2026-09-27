@@ -33,11 +33,7 @@ templ SubnetsListMain(rows []SubnetRow) {
 			<div>
 				<h1 style="margin-bottom: 0;">Subnets</h1>
 				<p style="margin-top: 0; opacity: 0.72;">CIDR ranges available for allocation, with current utilization.</p>
-				<div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-top: 1rem;">
-					<label style="margin: 0; vertical-align: middle;">
-						<input type="search" x-model="search" placeholder="Search CIDR, label, or site/env" aria-label="Search subnets"/>
-					</label>
-				</div>
+				<input type="search" x-model="search" placeholder="Search CIDR, label, or site/env" aria-label="Search subnets" style="margin-top: 1rem;"/>
 			</div>
 			<a href="/admin/subnets/new" class="button">New Subnet</a>
 		</header>

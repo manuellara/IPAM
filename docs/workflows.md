@@ -149,6 +149,46 @@ skip this entirely, see above.)*
   handling; CSV export of allocations; a site+env-to-subnet mapping
   admin UI (schema already supports per-naming-scheme scoping).
 
+## Site/Env Mapping Admin UI (Cycle 3)
+
+- **`/admin/site-env-map`** manages `site_env_subnet_map` rows — one
+  row per `(naming_scheme_id, site_code, env_code)` → `subnet_id`.
+  Schema already existed (scoped per `naming_scheme_id` from the
+  start); this cycle only added the admin UI on top of it.
+- **Site/env are not a global list** — they're
+  `naming_scheme_token_values` rows (`token = 'site'`/`'env'`), scoped
+  per naming scheme, same source the request form's app/role dropdowns
+  draw from. So the mapping form has a cascading dependency: pick a
+  scheme → site/env options narrow to that scheme's *active* token
+  values.
+- **The cascade is client-side (Alpine), not an htmx round-trip.**
+  Unlike the request form's `GET /requests/new/fields?scheme_id=`
+  fragment swap (which exists because the generated/manual field *set*
+  genuinely differs), all schemes' active site/env token values are
+  small enough to embed once as JSON when the form loads
+  (`SchemeTokensJSON`, keyed by `schemeID` → `{"site": [...], "env":
+  [...]}`) and filtered in the browser as the scheme select changes.
+  Don't add a server round-trip here — the dataset doesn't warrant it.
+- **The subnet dropdown offers active subnets only**
+  (`ListActiveSubnets`) — same rule as allocation: an inactive subnet
+  is never a valid target for a new or edited mapping.
+- **Uniqueness conflict UX matches the subnet form**: a
+  `(site_code, env_code, naming_scheme_id)` collision re-renders the
+  form inline with an error, no redirect — never let the raw SQLite
+  constraint error reach the user.
+- **List page** shows a Free-addresses column per mapping, computed
+  the same way as the subnets list
+  (`subnets.ComputeUtilization(prefix, reservedCount, usedCount).Free`,
+  fed by `ListSiteEnvSubnetMapWithDetails`'s per-row
+  `reserved_count`/`used_count` — see `queries.instructions.md` for the
+  query). Client-side search, since this is a bounded/admin-configured
+  table (see "Admin List Pagination Convention" below).
+- **Still not built**: the request-submission-time check that blocks
+  submitting a request for a site+env+scheme combo with no mapping row
+  ("no subnet configured for this site/environment/scheme — contact an
+  admin") — that lives in the request flow (not yet built), not here.
+  This item only covers managing the mappings themselves.
+
 ## Admin List Pagination Convention
 
 Whether an admin list page needs real pagination depends on whether the

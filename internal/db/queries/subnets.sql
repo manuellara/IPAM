@@ -38,19 +38,42 @@ ORDER BY s.cidr;
 SELECT id, cidr FROM subnets WHERE active = 1;
 
 -- name: GetSubnet :one
-SELECT * FROM subnets WHERE id = ?;
+SELECT * FROM subnets WHERE id = sqlc.arg(id);
 
 -- name: CreateSubnet :one
 INSERT INTO subnets (cidr, label, active)
-VALUES (?, ?, 1)
+VALUES (sqlc.arg(cidr), sqlc.arg(label), 1)
 RETURNING *;
 
 -- name: UpdateSubnet :exec
-UPDATE subnets SET cidr = ?, label = ?, active = ? WHERE id = ?;
+UPDATE subnets
+SET cidr = sqlc.arg(cidr), label = sqlc.arg(label), active = sqlc.arg(active)
+WHERE id = sqlc.arg(id);
 
 -- name: CountActiveAllocationsForSubnet :one
 -- Used for the deactivate warning: how many currently-active allocations
 -- would be "orphaned" (still valid, but on a subnet no longer accepting
 -- new ones) if this subnet is soft-retired. Informational only --
 -- does not block deactivation.
-SELECT COUNT(*) FROM ip_allocations WHERE subnet_id = ? AND released_at IS NULL;
+SELECT COUNT(*) FROM ip_allocations
+WHERE subnet_id = sqlc.arg(subnet_id) AND released_at IS NULL;
+
+-- name: ListReservedIPsForSubnet :many
+SELECT ip_address
+FROM subnet_reserved_ips
+WHERE subnet_id = sqlc.arg(subnet_id);
+
+-- name: ListActiveAllocatedIPsForSubnet :many
+SELECT ip_address
+FROM ip_allocations
+WHERE subnet_id = sqlc.arg(subnet_id) AND released_at IS NULL;
+
+-- name: CreateIPAllocation :one
+INSERT INTO ip_allocations (subnet_id, ip_address, request_id, server_id)
+VALUES (
+    sqlc.arg(subnet_id),
+    sqlc.arg(ip_address),
+    sqlc.arg(request_id),
+    sqlc.arg(server_id)
+)
+RETURNING *;

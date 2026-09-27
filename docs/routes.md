@@ -75,9 +75,11 @@ role, and **None** means no auth required.
 | ACTION | POST | `/admin/subnets` | `admin` | Overlap validation enforced (active subnets only) |
 | PAGE | GET | `/admin/subnets/{id}/edit` | `admin` | Shows an active-allocation-count warning if unchecking "active" |
 | ACTION | POST | `/admin/subnets/{id}` | `admin` | Overlap validation excludes self |
-| PAGE | GET | `/admin/site-env-map` | `admin` | Site+env+**scheme** → subnet mappings (scheme-scoped, so e.g. F5 VIPs can use a dedicated subnet) |
-| PAGE | GET | `/admin/site-env-map/new` | `admin` | |
-| ACTION | POST | `/admin/site-env-map` | `admin` | |
+| PAGE | GET | `/admin/site-env-map` | `admin` | Site+env+**scheme** → subnet mappings (scheme-scoped, so e.g. F5 VIPs can use a dedicated subnet). Shows a Free-addresses column per mapping's subnet; client-side search, same as `/admin/subnets` (bounded/admin-configured table). |
+| PAGE | GET | `/admin/site-env-map/new` | `admin` | Shares one `SiteEnvMapFormPage`/`SiteEnvMapFormMain` templ with the edit form. Site/env selects cascade off the selected naming scheme, entirely client-side (Alpine) — all schemes' active site/env token values are embedded once as JSON, no per-selection round-trip. |
+| ACTION | POST | `/admin/site-env-map` | `admin` | On a `(site_code, env_code, naming_scheme_id)` conflict, re-renders inline with an error — no redirect, same UX as the subnet form's overlap error |
+| PAGE | GET | `/admin/site-env-map/{id}/edit` | `admin` | |
+| ACTION | POST | `/admin/site-env-map/{id}` | `admin` | Same conflict handling as create |
 | PAGE | GET | `/admin/naming-schemes` | `admin` | The 4 schemes (Server, Network Device, VM, F5 Virtual Server) |
 | PAGE | GET | `/admin/naming-schemes/{id}` | `admin` | Scheme detail + token value tables + `naming_mode` |
 | PAGE | GET | `/admin/naming-schemes/{id}/tokens/new` | `admin` | |

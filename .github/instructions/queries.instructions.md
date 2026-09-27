@@ -84,3 +84,48 @@ ORDER BY s.cidr;
 -- shaped for the list page, not a single-subnet check.
 SELECT COUNT(*) FROM ip_allocations WHERE subnet_id = ? AND released_at IS NULL;
 ```
+
+## Reference: site_env_subnet_map queries (Cycle 3)
+
+`ListSiteEnvSubnetMapWithDetails` follows the exact same gotcha #1 as
+`ListSubnetsWithCounts` above (two `LEFT JOIN`s → `COUNT(DISTINCT ...)`
+per joined table), since it computes each mapping's subnet
+utilization the same way:
+
+```sql
+-- name: ListSiteEnvSubnetMapWithDetails :many
+SELECT
+    m.id,
+    m.site_code,
+    m.env_code,
+    m.active,
+    ns.id   AS scheme_id,
+    ns.name AS scheme_name,
+    s.id    AS subnet_id,
+    s.cidr  AS subnet_cidr,
+    s.label AS subnet_label,
+    COUNT(DISTINCT sr.id) AS reserved_count,
+    COUNT(DISTINCT ia.id) AS used_count
+FROM site_env_subnet_map m
+JOIN naming_schemes ns ON ns.id = m.naming_scheme_id
+JOIN subnets s ON s.id = m.subnet_id
+LEFT JOIN subnet_reserved_ips sr ON sr.subnet_id = s.id
+LEFT JOIN ip_allocations ia ON ia.subnet_id = s.id AND ia.released_at IS NULL
+GROUP BY m.id
+ORDER BY ns.name, m.site_code, m.env_code;
+
+-- name: ListActiveSiteEnvTokenValues :many
+-- All active site+env token values across every scheme, in one shot --
+-- meant to be embedded as JSON on the mapping form and filtered
+-- client-side (Alpine) by scheme_id + token as the scheme dropdown
+-- changes, not re-fetched per selection.
+SELECT scheme_id, token, code, label
+FROM naming_scheme_token_values
+WHERE active = 1 AND token IN ('site', 'env')
+ORDER BY scheme_id, token, code;
+```
+
+Two mappings that point at the same `subnet_id` will report the same
+`reserved_count`/`used_count`/free-address total — that's correct, not
+a bug: the free-address pool belongs to the subnet, not to any one
+mapping, so mappings sharing a subnet legitimately share its capacity.

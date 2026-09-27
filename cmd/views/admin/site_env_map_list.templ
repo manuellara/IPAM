@@ -1,0 +1,79 @@
+package admin
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/middleware"
+)
+
+type SiteEnvMapRow struct {
+	ID          int64
+	SchemeName  string
+	SiteCode    string
+	EnvCode     string
+	SubnetCIDR  string
+	SubnetLabel string
+	Active      bool
+    Free        int
+}
+
+templ SiteEnvMapListPage(principal middleware.Principal, rows []SiteEnvMapRow) {
+	@shared.Boilerplate("IPAM — Site/Env Mappings") {
+		@shared.Layout(shared.Sidebar(principal), SiteEnvMapListMain(rows))
+	}
+}
+
+templ SiteEnvMapListMain(rows []SiteEnvMapRow) {
+	<div class="container" x-data="{ search: '' }">
+		<header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+			<div>
+				<h1 style="margin-bottom: 0;">Site/Env Mappings</h1>
+				<p style="margin-top: 0; opacity: 0.72;">Where each naming scheme's site+env combination draws its subnet from.</p>
+				<input type="search" x-model="search" placeholder="Search scheme, site, env, or subnet" aria-label="Search mappings" style="margin-top: 1rem;"/>
+			</div>
+			<a href="/admin/site-env-map/new" class="button">New Mapping</a>
+		</header>
+		<table>
+			<thead>
+				<tr>
+					<th>Scheme</th>
+					<th>Site</th>
+					<th>Env</th>
+					<th>Subnet</th>
+					<th>Status</th>
+					<th>Free</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, row := range rows {
+					<tr x-show="!search || $el.dataset.search.includes(search.toLowerCase())" data-search={ strings.ToLower(strings.Join([]string{row.SchemeName, row.SiteCode, row.EnvCode, row.SubnetCIDR, row.SubnetLabel}, " ")) } style={ templ.SafeCSS(rowStyle(row.Active)) }>
+						<td>{ row.SchemeName }</td>
+						<td><code>{ row.SiteCode }</code></td>
+						<td><code>{ row.EnvCode }</code></td>
+						<td>
+							<code>{ row.SubnetCIDR }</code>
+							if row.SubnetLabel != "" {
+								<span style="opacity: 0.7;">— { row.SubnetLabel }</span>
+							}
+						</td>
+						<td>
+							if row.Active {
+								<span class="badge">Active</span>
+							} else {
+								<span class="badge badge-muted">Inactive</span>
+							}
+						</td>
+						<td>{ fmt.Sprint(row.Free) }</td>
+						<td><a href={ templ.URL(fmt.Sprintf("/admin/site-env-map/%d/edit", row.ID)) }>Edit</a></td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		if len(rows) == 0 {
+			<p style="opacity: 0.72; text-align: center; margin-top: 2rem;">No mappings yet.</p>
+		}
+	</div>
+}
