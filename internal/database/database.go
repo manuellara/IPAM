@@ -101,5 +101,5 @@ func sqliteDSN(path string) string {
 		path = "file::memory:?cache=shared"
 		separator = "&"
 	}
-	return path + separator + "_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000"
+	return path + separator + "_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000&_txlock=immediate"
 }

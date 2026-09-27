@@ -139,7 +139,7 @@ func SubnetFormMain(data SubnetFormData) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(data.ErrMsg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-create-edit.templ`, Line: 48, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-form.templ`, Line: 48, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -162,7 +162,7 @@ func SubnetFormMain(data SubnetFormData) templ.Component {
 			var templ_7745c5c3_Var5 templ.SafeURL
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/subnets/%d", data.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-create-edit.templ`, Line: 55, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-form.templ`, Line: 55, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -185,7 +185,7 @@ func SubnetFormMain(data SubnetFormData) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(data.CIDR)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-create-edit.templ`, Line: 64, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-form.templ`, Line: 64, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -198,7 +198,7 @@ func SubnetFormMain(data SubnetFormData) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(data.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-create-edit.templ`, Line: 66, Col: 66}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-form.templ`, Line: 66, Col: 66}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -224,14 +224,14 @@ func SubnetFormMain(data SubnetFormData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if data.ActiveAllocationCount > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<p role=\"alert\" data-variant=\"warning\" style=\"margin: 0.25rem 0 0.75rem; padding: 0.75rem 0.9rem; border-radius: 0.5rem; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25);\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<p role=\"alert\" data-variant=\"warning\" style=\"margin: 0.25rem 0 0.75rem;\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("This subnet has %d active allocation(s). Deactivating will block NEW allocations but existing ones remain valid.", data.ActiveAllocationCount))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-create-edit.templ`, Line: 76, Col: 165}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets-form.templ`, Line: 76, Col: 165}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {

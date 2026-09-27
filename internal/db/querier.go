@@ -16,9 +16,11 @@ type Querier interface {
 	// does not block deactivation.
 	CountActiveAllocationsForSubnet(ctx context.Context, subnetID int64) (int64, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
+	CreateIPAllocation(ctx context.Context, arg CreateIPAllocationParams) (IpAllocation, error)
 	CreateLDAPUser(ctx context.Context, arg CreateLDAPUserParams) (User, error)
 	CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error)
 	CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error)
+	CreateSiteEnvSubnetMap(ctx context.Context, arg CreateSiteEnvSubnetMapParams) (SiteEnvSubnetMap, error)
 	CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Subnet, error)
 	GetLDAPConfig(ctx context.Context) (LdapConfig, error)
 	GetLDAPUser(ctx context.Context, ldapDn *string) (User, error)
@@ -26,13 +28,21 @@ type Querier interface {
 	GetLoginAttempt(ctx context.Context, arg GetLoginAttemptParams) (LoginAttempt, error)
 	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
 	GetOIDCUser(ctx context.Context, oidcSubject *string) (User, error)
+	GetSiteEnvSubnetMap(ctx context.Context, id int64) (SiteEnvSubnetMap, error)
 	GetSubnet(ctx context.Context, id int64) (Subnet, error)
 	GetUserRoleNames(ctx context.Context, userID int64) ([]string, error)
+	ListActiveAllocatedIPsForSubnet(ctx context.Context, subnetID int64) ([]string, error)
+	// Load active site and env tokens for client-side filtering by scheme and token.
+	ListActiveSiteEnvTokenValues(ctx context.Context) ([]ListActiveSiteEnvTokenValuesRow, error)
 	// Used for CIDR overlap validation on create/edit -- only ACTIVE subnets
 	// are checked, per subnets.active semantics: a retired range can be
 	// legitimately reused by a new subnet without being falsely blocked by
 	// its own retired history.
 	ListActiveSubnets(ctx context.Context) ([]ListActiveSubnetsRow, error)
+	ListNamingSchemes(ctx context.Context) ([]ListNamingSchemesRow, error)
+	ListReservedIPsForSubnet(ctx context.Context, subnetID int64) ([]string, error)
+	// Include scheme and subnet details for the mapping list page.
+	ListSiteEnvSubnetMapWithDetails(ctx context.Context) ([]ListSiteEnvSubnetMapWithDetailsRow, error)
 	// Three LEFT JOINs (reserved IPs, active allocations, active site+env
 	// mappings) produce a cross product of matching rows per subnet. Each
 	// aggregate below is DISTINCT on its own join's identifying value, so
@@ -54,6 +64,7 @@ type Querier interface {
 	ResetLoginAttempts(ctx context.Context, arg ResetLoginAttemptsParams) error
 	UpdateLDAPConfig(ctx context.Context, arg UpdateLDAPConfigParams) error
 	UpdateOIDCConfig(ctx context.Context, arg UpdateOIDCConfigParams) error
+	UpdateSiteEnvSubnetMap(ctx context.Context, arg UpdateSiteEnvSubnetMapParams) error
 	UpdateSubnet(ctx context.Context, arg UpdateSubnetParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error
 }
