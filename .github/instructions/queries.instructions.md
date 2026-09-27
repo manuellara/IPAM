@@ -129,3 +129,25 @@ Two mappings that point at the same `subnet_id` will report the same
 `reserved_count`/`used_count`/free-address total — that's correct, not
 a bug: the free-address pool belongs to the subnet, not to any one
 mapping, so mappings sharing a subnet legitimately share its capacity.
+
+## Reference: IP allocation queries (Cycle 3)
+
+Backing `internal/allocation.Allocate` — see
+`docs/workflows.md`'s "IP Allocation Logic" section for the full
+design (why these run inside an already-open transaction, the
+`_txlock=immediate` DSN change, the two distinct error cases).
+
+```sql
+-- name: ListReservedIPsForSubnet :many
+SELECT ip_address FROM subnet_reserved_ips WHERE subnet_id = ?;
+
+-- name: ListActiveAllocatedIPsForSubnet :many
+SELECT ip_address FROM ip_allocations WHERE subnet_id = ? AND released_at IS NULL;
+
+-- name: CreateIPAllocation :one
+INSERT INTO ip_allocations (subnet_id, ip_address, request_id, server_id)
+VALUES (?, ?, ?, ?)
+RETURNING *;
+```
+
+No aggregate gotchas here — single-table queries, no joins.

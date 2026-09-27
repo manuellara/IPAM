@@ -143,11 +143,73 @@ skip this entirely, see above.)*
   site/envs) — acceptable because this table is admin-sized and
   bounded. See "Admin List Pagination Convention" below before copying
   this pattern onto an unbounded table.
-- **Still ahead in this cycle** (not yet built): reserved/excluded IPs
-  within a subnet; auto-assign next available IP (must also check
-  `subnets.active`, distinctly from exhaustion); subnet exhaustion
-  handling; CSV export of allocations; a site+env-to-subnet mapping
-  admin UI (schema already supports per-naming-scheme scoping).
+- **Still ahead in this cycle** (not yet built): CSV export of
+  allocations. Auto-assign next available IP and the site+env-to-subnet
+  mapping admin UI are done (see "IP Allocation Logic" and "Site/Env
+  Mapping Admin UI" below) — reserved/excluded IPs are also covered
+  (the auto-assign logic already skips them; there's just no admin UI
+  yet for managing `subnet_reserved_ips` rows directly, currently
+  requires a manual insert). Subnet exhaustion has a distinct sentinel
+  error (`subnets.ErrSubnetExhausted`) but no caller surfaces it as a
+  user-facing message yet — that's the approval flow's job, not yet
+  started.
+
+## IP Allocation Logic (Cycle 3)
+
+- **Two-layer split, deliberately**: `internal/subnets.NextFreeIP`
+  (pure — no DB dependency, takes plain `netip.Addr` slices, fully
+  unit-testable) computes which address to hand out;
+  `internal/allocation.Allocate` (DB-aware) loads a subnet's reserved
+  and currently-allocated IPs via sqlc, calls `NextFreeIP`, and inserts
+  the `ip_allocations` row. `internal/subnets` never imports
+  `internal/db` — keeping that boundary is why the pure function stays
+  trivially testable without a database.
+- **`NextFreeIP` iterates in natural address order** (bottom-up), skips
+  the network and broadcast addresses, and skips anything in the
+  supplied reserved/allocated sets. `/31` and `/32` (and `/127`/`/128`
+  for IPv6) always return `ErrSubnetExhausted` immediately — zero
+  usable host bits means zero capacity, matching
+  `ComputeUtilization`'s existing floor-at-0 behavior for the same
+  prefix lengths, not a separately-bolted-on special case.
+- **Two distinct sentinel errors**, both defined in `internal/subnets`
+  since they're domain-level concepts:
+  - `ErrSubnetInactive` — the subnet has `active = 0`. Checked first,
+    before even attempting to scan for a free address — an inactive
+    subnet blocks new allocations even if it technically still has
+    free capacity.
+  - `ErrSubnetExhausted` — every address in the usable host range is
+    reserved or already allocated.
+  These stay distinguishable all the way up (never collapsed into one
+  generic "allocation failed" error) because the admin's fix is
+  different for each: reconfigure the site+env mapping vs. add
+  capacity.
+- **`internal/allocation.Allocate` does not open its own transaction.**
+  It's designed to be one step inside a larger `db.WithTx` call — the
+  future approval flow's job is: check the mapped subnet is active
+  (via `Allocate`'s own subnet lookup) → allocate the IP → lock and
+  increment the naming sequence → write the audit log entry, all in
+  one transaction, all-or-nothing. Calling `Allocate` outside of an
+  already-open transaction would still work today (nothing enforces
+  it), but defeats the point.
+- **Concurrency safety comes from `_txlock=immediate` on the SQLite
+  DSN, not from application-level locking.** SQLite only ever has one
+  writer; the DSN change makes every `db.WithTx` transaction grab the
+  write lock at `BEGIN` rather than lazily on the first write
+  statement. Without it, two concurrent approval transactions could
+  both scan and compute the *same* "next free IP" before either
+  writes, and only the second `INSERT` would fail (against the
+  existing `ip_allocations_active_unique` partial index) — correct,
+  but a foreseeable failure requiring a retry loop. With the DSN
+  change, the second transaction simply blocks until the first
+  commits, so no retry logic is needed anywhere. This applies to every
+  existing `db.WithTx` caller automatically (local admin bootstrap,
+  OIDC/LDAP provisioning), not just IP allocation.
+- **No caller is wired up yet** — `internal/allocation.Allocate` has no
+  route, no controller, no UI. It's built and unit-tested in isolation
+  (matching the split above), ready to be called from the approval
+  transaction once the "Request and Approval Workflow" module starts.
+  Don't build a temporary admin-direct trigger for it speculatively —
+  that module will need its own design pass when it's picked up.
 
 ## Site/Env Mapping Admin UI (Cycle 3)
 
