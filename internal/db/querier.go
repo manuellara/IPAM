@@ -22,6 +22,10 @@ type Querier interface {
 	CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error)
 	CreateSiteEnvSubnetMap(ctx context.Context, arg CreateSiteEnvSubnetMapParams) (SiteEnvSubnetMap, error)
 	CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Subnet, error)
+	CreateSubnetReservedIP(ctx context.Context, arg CreateSubnetReservedIPParams) (SubnetReservedIp, error)
+	// Scoped by subnet_id too, not just id -- belt-and-suspenders against a
+	// crafted delete for a row under a different subnet.
+	DeleteSubnetReservedIP(ctx context.Context, arg DeleteSubnetReservedIPParams) error
 	GetLDAPConfig(ctx context.Context) (LdapConfig, error)
 	GetLDAPUser(ctx context.Context, ldapDn *string) (User, error)
 	GetLocalAdminUser(ctx context.Context) (User, error)
@@ -43,6 +47,10 @@ type Querier interface {
 	ListReservedIPsForSubnet(ctx context.Context, subnetID int64) ([]string, error)
 	// Include scheme and subnet details for the mapping list page.
 	ListSiteEnvSubnetMapWithDetails(ctx context.Context) ([]ListSiteEnvSubnetMapWithDetailsRow, error)
+	// Powers the /admin/subnets/{id}/reserved-ips list page. Distinct from
+	// ListReservedIPsForSubnet (allocation.go, ip_address only) -- this one
+	// carries id/reason/created_at for display and delete actions.
+	ListSubnetReservedIPsForAdmin(ctx context.Context, subnetID int64) ([]ListSubnetReservedIPsForAdminRow, error)
 	// Three LEFT JOINs (reserved IPs, active allocations, active site+env
 	// mappings) produce a cross product of matching rows per subnet. Each
 	// aggregate below is DISTINCT on its own join's identifying value, so

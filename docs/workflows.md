@@ -144,13 +144,14 @@ skip this entirely, see above.)*
   bounded. See "Admin List Pagination Convention" below before copying
   this pattern onto an unbounded table.
 - **Still ahead in this cycle** (not yet built): CSV export of
-  allocations. Auto-assign next available IP and the site+env-to-subnet
-  mapping admin UI are done (see "IP Allocation Logic" and "Site/Env
-  Mapping Admin UI" below) — reserved/excluded IPs are also covered
-  (the auto-assign logic already skips them; there's just no admin UI
-  yet for managing `subnet_reserved_ips` rows directly, currently
-  requires a manual insert). Subnet exhaustion has a distinct sentinel
-  error (`subnets.ErrSubnetExhausted`) but no caller surfaces it as a
+  allocations. Auto-assign next available IP, the site+env-to-subnet
+  mapping admin UI, and reserved/excluded IP management are all done
+  (see "IP Allocation Logic", "Site/Env Mapping Admin UI", and
+  "Reserved/Excluded IPs Admin UI" below) — the auto-assign logic skips
+  reserved IPs, and admins manage them directly at
+  `/admin/subnets/{id}/reserved-ips`, no manual insert needed. Subnet
+  exhaustion has a distinct sentinel error
+  (`subnets.ErrSubnetExhausted`) but no caller surfaces it as a
   user-facing message yet — that's the approval flow's job, not yet
   started.
 
@@ -210,6 +211,52 @@ skip this entirely, see above.)*
   transaction once the "Request and Approval Workflow" module starts.
   Don't build a temporary admin-direct trigger for it speculatively —
   that module will need its own design pass when it's picked up.
+
+## Reserved/Excluded IPs Admin UI (IPAM-39)
+
+- **`/admin/subnets/{id}/reserved-ips`** manages `subnet_reserved_ips`
+  rows for one subnet — own page (list + add form + per-row delete,
+  `ReservedIPController`), not an htmx fragment on the subnet edit
+  form. Weighed against the fragment pattern used for naming-scheme
+  token values and maintenance-window servers/rules, and a full page
+  was chosen deliberately for this feature (UX reasons); linked from
+  the subnet edit page.
+- **No schema change was needed to support "a small range."**
+  `subnet_reserved_ips` already stores one `ip_address` per row
+  (`UNIQUE(subnet_id, ip_address)`). The add form takes a single IP or
+  a start–end range; a range is expanded server-side
+  (`subnets.ExpandReserveRange`, pure domain math in
+  `internal/subnets`, same DB-agnostic package as `NextFreeIP`) into
+  individual addresses before insert. Don't add `ip_start`/`ip_end`
+  columns — the row-per-address shape matches how `NextFreeIP` already
+  consumes this table (a flat address set, not a range test).
+- **`ExpandReserveRange` validates**: start/end parse, same address
+  family, both addresses fall inside the subnet's own CIDR
+  (`prefix.Contains`), `start <= end` (via `netip.Addr.Compare`), and
+  the expanded range is capped at `subnets.MaxReserveRangeSize` (256
+  addresses) — the enforced definition of the work item's "a small
+  range" language, not left to admin judgment.
+- **A range insert is one `db.WithTx` transaction, not per-item partial
+  success** — reserving a range is one coherent admin action (unlike
+  CSV import or the maintenance-window batch API, which are
+  intentionally per-item). A `UNIQUE` violation on any address in the
+  range rejects the whole submission; zero rows are inserted, never a
+  partially-reserved range. Same inline-error UX as the subnet/site-
+  env-map form conflicts — re-render with an error, no redirect.
+- **List ordering: `ORDER BY id`, not `created_at`.** All rows from one
+  range submission are inserted in the same transaction, and SQLite's
+  `datetime('now')` only has second resolution, so they tie on
+  `created_at`. Ties fall back to the `(subnet_id, ip_address)` unique
+  index's own order, which is a **lexicographic string sort on
+  `ip_address`** (`"10.1.11.10"` sorts before `"10.1.11.5"`) — not
+  numeric, and not insertion order. `id` (the autoincrement PK) is
+  insertion order, which is address order (`ExpandReserveRange` returns
+  addresses ascending, inserted in that order) — this was an actual bug
+  caught during testing, not a hypothetical.
+- **Reserving doesn't check current allocation status** — an admin can
+  reserve an address that's currently actively allocated. Harmless: it
+  just prevents that address from being handed out again once it's
+  eventually released. Considered and deliberately not blocked.
 
 ## Site/Env Mapping Admin UI (Cycle 3)
 

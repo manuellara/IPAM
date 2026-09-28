@@ -23,11 +23,11 @@ type SubnetRow struct {
 
 templ SubnetsListPage(principal middleware.Principal, rows []SubnetRow) {
 	@shared.Boilerplate("IPAM — Subnets") {
-		@shared.Layout(shared.Sidebar(principal), SubnetsListMain(rows))
+		@shared.Layout(shared.Sidebar(principal), SubnetsListMain(principal, rows))
 	}
 }
 
-templ SubnetsListMain(rows []SubnetRow) {
+templ SubnetsListMain(principal middleware.Principal, rows []SubnetRow) {
 	<div class="container" x-data="{ search: '' }">
 		<header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
 			<div>
@@ -74,7 +74,12 @@ templ SubnetsListMain(rows []SubnetRow) {
 							</div>
 						</td>
 						<td>{ fmt.Sprint(row.Util.Free) }</td>
-						<td><a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/edit", row.ID)) }>Edit</a></td>
+						<td>
+							<a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/edit", row.ID)) }>Edit</a>
+							if principal.HasAnyRole(middleware.RoleAdmin) {
+								· <a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/reserved-ips", row.ID)) }>Reserved IPs</a>
+							}
+						</td>
 					</tr>
 				}
 			</tbody>

@@ -73,8 +73,11 @@ role, and **None** means no auth required.
 | PAGE | GET | `/admin/subnets` | `admin` (`viewer`: read-only) | List with per-subnet utilization (stacked allocated/reserved/free bar) and site/env tags; search is client-side (Alpine.js `x-show`) — acceptable because this table is admin-sized/bounded, unlike audit log below |
 | PAGE | GET | `/admin/subnets/new` | `admin` | Shares `SubnetFormPage`/`SubnetFormMain` templ with the edit form (`SubnetFormData.IsEdit` flag), not a separate template |
 | ACTION | POST | `/admin/subnets` | `admin` | Overlap validation enforced (active subnets only) |
-| PAGE | GET | `/admin/subnets/{id}/edit` | `admin` | Shows an active-allocation-count warning if unchecking "active" |
+| PAGE | GET | `/admin/subnets/{id}/edit` | `admin` | Shows an active-allocation-count warning if unchecking "active"; links to `/admin/subnets/{id}/reserved-ips` |
 | ACTION | POST | `/admin/subnets/{id}` | `admin` | Overlap validation excludes self |
+| PAGE | GET | `/admin/subnets/{id}/reserved-ips` | `admin` | Reserved/excluded IPs for one subnet (IPAM-39) — own page, not a fragment on the edit form, matching the site+env-map pattern. Add form takes a single IP or a start–end range (range expanded server-side into individual `subnet_reserved_ips` rows, capped at `subnets.MaxReserveRangeSize` = 256 addresses, inserted in one transaction — all-or-nothing, not per-item partial success). |
+| ACTION | POST | `/admin/subnets/{id}/reserved-ips` | `admin` | Validates start/end parse, same address family, both inside the subnet's CIDR (`prefix.Contains`), `start <= end`. Duplicate reservation (`UNIQUE(subnet_id, ip_address)`) re-renders inline with an error, same UX as the subnet/site-env-map form conflicts — no partial insert. |
+| ACTION | POST | `/admin/subnets/{id}/reserved-ips/{reservedID}/delete` | `admin` | Scoped by both `id` and `reservedID` |
 | PAGE | GET | `/admin/site-env-map` | `admin` | Site+env+**scheme** → subnet mappings (scheme-scoped, so e.g. F5 VIPs can use a dedicated subnet). Shows a Free-addresses column per mapping's subnet; client-side search, same as `/admin/subnets` (bounded/admin-configured table). |
 | PAGE | GET | `/admin/site-env-map/new` | `admin` | Shares one `SiteEnvMapFormPage`/`SiteEnvMapFormMain` templ with the edit form. Site/env selects cascade off the selected naming scheme, entirely client-side (Alpine) — all schemes' active site/env token values are embedded once as JSON, no per-selection round-trip. |
 | ACTION | POST | `/admin/site-env-map` | `admin` | On a `(site_code, env_code, naming_scheme_id)` conflict, re-renders inline with an error — no redirect, same UX as the subnet form's overlap error |
@@ -233,6 +236,15 @@ with an API key can consume it.
   tooltips plus the text line are considered self-explanatory. Reuse
   this pattern rather than `<meter>` for any future multi-state
   utilization display.
+- **Own page vs. htmx fragment for a sub-resource list**: a small list
+  scoped to a parent resource (reserved IPs under a subnet, token
+  values under a naming scheme, static servers/rules under a
+  maintenance window) doesn't automatically mean htmx FRAGMENT
+  in-place add/remove. Reserved IPs (IPAM-39) deliberately got its own
+  page (`/admin/subnets/{id}/reserved-ips`) instead, for UX reasons —
+  default to a full page for a subnet-scoped admin sub-list unless
+  there's a specific reason (very high interaction frequency, e.g.
+  maintenance window server/rule toggling) to use a fragment instead.
 
 ## Key Workflow Notes
 

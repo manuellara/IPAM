@@ -58,6 +58,26 @@ WHERE id = sqlc.arg(id);
 SELECT COUNT(*) FROM ip_allocations
 WHERE subnet_id = sqlc.arg(subnet_id) AND released_at IS NULL;
 
+-- name: ListSubnetReservedIPsForAdmin :many
+-- Powers the /admin/subnets/{id}/reserved-ips list page. Distinct from
+-- ListReservedIPsForSubnet (allocation.go, ip_address only) -- this one
+-- carries id/reason/created_at for display and delete actions.
+SELECT id, ip_address, reason, created_at
+FROM subnet_reserved_ips
+WHERE subnet_id = sqlc.arg(subnet_id)
+ORDER BY id;
+
+-- name: CreateSubnetReservedIP :one
+INSERT INTO subnet_reserved_ips (subnet_id, ip_address, reason)
+VALUES (sqlc.arg(subnet_id), sqlc.arg(ip_address), sqlc.arg(reason))
+RETURNING *;
+
+-- name: DeleteSubnetReservedIP :exec
+-- Scoped by subnet_id too, not just id -- belt-and-suspenders against a
+-- crafted delete for a row under a different subnet.
+DELETE FROM subnet_reserved_ips
+WHERE id = sqlc.arg(id) AND subnet_id = sqlc.arg(subnet_id);
+
 -- name: ListReservedIPsForSubnet :many
 SELECT ip_address
 FROM subnet_reserved_ips

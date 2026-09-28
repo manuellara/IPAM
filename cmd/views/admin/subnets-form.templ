@@ -80,6 +80,9 @@ templ SubnetFormMain(data SubnetFormData) {
 					<button type="submit" style="display: block; margin-top: 0.5rem;">Save</button>
 				</fieldset>
 			</form>
+			if data.IsEdit {
+				<p><a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/reserved-ips", data.ID)) }>Manage reserved IPs</a></p>
+			}
 		</section>
 	</div>
 }

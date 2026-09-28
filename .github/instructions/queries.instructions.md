@@ -151,3 +151,38 @@ RETURNING *;
 ```
 
 No aggregate gotchas here — single-table queries, no joins.
+
+## Reference: reserved-IP admin queries (IPAM-39)
+
+Backing `/admin/subnets/{id}/reserved-ips`. Distinct from
+`ListReservedIPsForSubnet` above (allocation-time check, `ip_address`
+only) — these carry `id`/`reason`/`created_at` for the admin list/delete
+UI.
+
+```sql
+-- name: ListSubnetReservedIPsForAdmin :many
+-- ORDER BY id, not created_at. A range reservation inserts every row in
+-- one transaction, and SQLite's datetime('now') only has second
+-- resolution -- rows from the same range submission tie on created_at,
+-- and ties fall back to whatever order the (subnet_id, ip_address)
+-- unique index happens to return them in, which is a LEXICOGRAPHIC
+-- string sort on ip_address, not numeric (e.g. "10.1.11.10" sorts
+-- before "10.1.11.5"). id is the autoincrement PK and reflects actual
+-- insertion order, which is address order (ExpandReserveRange returns
+-- addresses ascending, inserted in that order) -- don't change this
+-- back to created_at.
+SELECT id, ip_address, reason, created_at
+FROM subnet_reserved_ips
+WHERE subnet_id = ?
+ORDER BY id;
+
+-- name: CreateSubnetReservedIP :one
+INSERT INTO subnet_reserved_ips (subnet_id, ip_address, reason)
+VALUES (?, ?, ?)
+RETURNING *;
+
+-- name: DeleteSubnetReservedIP :exec
+-- Scoped by subnet_id too, not just id -- belt-and-suspenders against a
+-- crafted delete for a row under a different subnet.
+DELETE FROM subnet_reserved_ips WHERE id = ? AND subnet_id = ?;
+```

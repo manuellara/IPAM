@@ -1,0 +1,87 @@
+package admin
+
+import (
+	"fmt"
+
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/middleware"
+)
+
+type ReservedIPRow struct {
+	ID        int64
+	IPAddress string
+	Reason    string
+	CreatedAt string
+}
+
+type ReservedIPListData struct {
+	SubnetID   int64
+	SubnetCIDR string
+	Rows       []ReservedIPRow
+	FormError  string
+}
+
+templ ReservedIPListPage(principal middleware.Principal, data ReservedIPListData) {
+	@shared.Boilerplate("IPAM - Reserved IPs") {
+		@shared.Layout(shared.Sidebar(principal), ReservedIPListMain(data))
+	}
+}
+
+templ ReservedIPListMain(data ReservedIPListData) {
+	<div class="container">
+		<header style="margin-bottom: 1.5rem;">
+			<h1 style="margin-bottom: 0;">Reserved IPs — <code>{ data.SubnetCIDR }</code></h1>
+			<p style="margin-top: 0.5rem; opacity: 0.72;">Manage addresses excluded from automatic allocation.</p>
+			<a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/edit", data.SubnetID)) }>&larr; Back to subnet</a>
+		</header>
+		if data.FormError != "" {
+			<div class="error mb-4" role="alert" data-variant="error" style="margin-bottom: 1rem;">
+				<strong>Error!</strong> { data.FormError }
+			</div>
+		}
+		<section style="max-width: 42rem; margin: 0 auto 2rem;">
+			<form method="POST" action={ templ.URL(fmt.Sprintf("/admin/subnets/%d/reserved-ips", data.SubnetID)) } style="display: block;">
+				<fieldset style="border: 1px solid var(--border); border-radius: 0.5rem; padding: 1.25rem 1.25rem 1rem;">
+					<legend style="padding: 0 0.5rem; font-weight: 600;">Reservation details</legend>
+					<label for="start-ip" style="display: block; margin-top: 0.5rem; margin-bottom: 0.35rem; font-weight: 600;">Start IP</label>
+					<input type="text" id="start-ip" name="start_ip" required placeholder="192.0.2.5" style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+					<label for="end-ip" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">End IP <span style="font-weight: 400; opacity: 0.72;">(optional, for a range)</span></label>
+					<input type="text" id="end-ip" name="end_ip" placeholder="192.0.2.10" style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+					<label for="reason" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Reason <span style="font-weight: 400; opacity: 0.72;">(optional)</span></label>
+					<input type="text" id="reason" name="reason" placeholder="gateway" style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+					<button type="submit" style="display: block; margin-top: 0.5rem;">Reserve</button>
+				</fieldset>
+			</form>
+		</section>
+		<div style="overflow-x: auto;">
+			<table>
+				<thead>
+					<tr><th>IP Address</th><th>Reason</th><th>Created</th><th></th></tr>
+				</thead>
+				<tbody>
+					for _, row := range data.Rows {
+						<tr>
+							<td><code>{ row.IPAddress }</code></td>
+							<td>
+								if row.Reason != "" {
+									{ row.Reason }
+								} else {
+									<span style="opacity: 0.5;">—</span>
+								}
+							</td>
+							<td>{ row.CreatedAt }</td>
+							<td>
+								<form method="POST" action={ templ.URL(fmt.Sprintf("/admin/subnets/%d/reserved-ips/%d/delete", data.SubnetID, row.ID)) }>
+									<button type="submit">Remove</button>
+								</form>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		if len(data.Rows) == 0 {
+			<p style="opacity: 0.72; text-align: center; margin-top: 2rem;">No reserved IPs for this subnet.</p>
+		}
+	</div>
+}
