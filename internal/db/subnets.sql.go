@@ -87,6 +87,48 @@ func (q *Queries) CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Sub
 	return i, err
 }
 
+const createSubnetReservedIP = `-- name: CreateSubnetReservedIP :one
+INSERT INTO subnet_reserved_ips (subnet_id, ip_address, reason)
+VALUES (?1, ?2, ?3)
+RETURNING id, subnet_id, ip_address, reason, created_at
+`
+
+type CreateSubnetReservedIPParams struct {
+	SubnetID  int64   `json:"subnet_id"`
+	IpAddress string  `json:"ip_address"`
+	Reason    *string `json:"reason"`
+}
+
+func (q *Queries) CreateSubnetReservedIP(ctx context.Context, arg CreateSubnetReservedIPParams) (SubnetReservedIp, error) {
+	row := q.db.QueryRowContext(ctx, createSubnetReservedIP, arg.SubnetID, arg.IpAddress, arg.Reason)
+	var i SubnetReservedIp
+	err := row.Scan(
+		&i.ID,
+		&i.SubnetID,
+		&i.IpAddress,
+		&i.Reason,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteSubnetReservedIP = `-- name: DeleteSubnetReservedIP :exec
+DELETE FROM subnet_reserved_ips
+WHERE id = ?1 AND subnet_id = ?2
+`
+
+type DeleteSubnetReservedIPParams struct {
+	ID       int64 `json:"id"`
+	SubnetID int64 `json:"subnet_id"`
+}
+
+// Scoped by subnet_id too, not just id -- belt-and-suspenders against a
+// crafted delete for a row under a different subnet.
+func (q *Queries) DeleteSubnetReservedIP(ctx context.Context, arg DeleteSubnetReservedIPParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSubnetReservedIP, arg.ID, arg.SubnetID)
+	return err
+}
+
 const getSubnet = `-- name: GetSubnet :one
 SELECT id, cidr, label, active, created_at FROM subnets WHERE id = ?1
 `
@@ -188,6 +230,51 @@ func (q *Queries) ListReservedIPsForSubnet(ctx context.Context, subnetID int64) 
 			return nil, err
 		}
 		items = append(items, ip_address)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSubnetReservedIPsForAdmin = `-- name: ListSubnetReservedIPsForAdmin :many
+SELECT id, ip_address, reason, created_at
+FROM subnet_reserved_ips
+WHERE subnet_id = ?1
+ORDER BY id
+`
+
+type ListSubnetReservedIPsForAdminRow struct {
+	ID        int64   `json:"id"`
+	IpAddress string  `json:"ip_address"`
+	Reason    *string `json:"reason"`
+	CreatedAt string  `json:"created_at"`
+}
+
+// Powers the /admin/subnets/{id}/reserved-ips list page. Distinct from
+// ListReservedIPsForSubnet (allocation.go, ip_address only) -- this one
+// carries id/reason/created_at for display and delete actions.
+func (q *Queries) ListSubnetReservedIPsForAdmin(ctx context.Context, subnetID int64) ([]ListSubnetReservedIPsForAdminRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSubnetReservedIPsForAdmin, subnetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSubnetReservedIPsForAdminRow{}
+	for rows.Next() {
+		var i ListSubnetReservedIPsForAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IpAddress,
+			&i.Reason,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

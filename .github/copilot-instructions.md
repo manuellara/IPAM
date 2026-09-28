@@ -424,6 +424,60 @@ repeatedly failing their login on purpose).
   separator) surfaced while building the subnets list query — they'll
   recur on the next admin list page that joins and aggregates.
 
+## Reserved/excluded IPs (Cycle 3, IPAM-39)
+
+- **`subnet_reserved_ips` needed no schema change** to support a "reserve
+  a range" request — it already stores one `ip_address` per row
+  (`UNIQUE(subnet_id, ip_address)`). A start–end range typed into the
+  admin form is expanded server-side into individual rows
+  (`subnets.ExpandReserveRange`, `internal/subnets/reserve.go`) rather
+  than adding `ip_start`/`ip_end` columns. Don't add range columns to
+  this table — the row-per-address shape is deliberate and matches how
+  `NextFreeIP` already consumes it (a flat address set, not a range
+  test).
+- **`subnets.MaxReserveRangeSize` (256)** caps a single range submission
+  — "a small range" per the work item's acceptance criteria, enforced
+  rather than left to admin judgment. A submission expanding past this
+  fails validation before any insert happens.
+- **Range expansion + validation is pure domain math** in
+  `internal/subnets` (same DB-agnostic package as `NextFreeIP`,
+  `ValidateNoOverlap`, `ComputeUtilization`) — `ExpandReserveRange` takes
+  the subnet's `netip.Prefix` plus start/end `netip.Addr` and returns the
+  individual addresses to insert, or one of `ErrReserveRangeInverted`,
+  `ErrReserveRangeTooLarge`, `ErrReserveOutsideSubnet`,
+  `ErrReserveFamilyMismatch`. It doesn't touch the DB — the controller
+  does the inserting.
+- **A range insert is one `db.WithTx` transaction, not per-item partial
+  success** — reserving a range is one coherent admin action (unlike CSV
+  import or the maintenance-window batch API, which are intentionally
+  per-item). If any address in the range collides with an existing
+  reservation (`UNIQUE` violation), the whole submission is rejected and
+  zero rows are inserted — never a partially-reserved range.
+- **Own page (`/admin/subnets/{id}/reserved-ips`), not an htmx fragment
+  on the subnet edit form** — a deliberate choice for this feature
+  specifically, weighed against the fragment-based pattern used for
+  naming-scheme token values and maintenance-window servers/rules.
+  Reserved IPs got a full page (list + add form + per-row delete,
+  controller `ReservedIPController`) for UX reasons; don't assume every
+  subnet-scoped sub-list should be a fragment just because a precedent
+  for that exists elsewhere.
+- **Reserving an IP doesn't check current allocation status** — an
+  admin can reserve an address that's currently actively allocated
+  (harmless: it just prevents that address from being handed out again
+  *after* it's eventually released). Don't add a check blocking this;
+  it was considered and deliberately not required.
+- **`ListSubnetReservedIPsForAdmin` orders by `id`, not `created_at`.**
+  This was a real bug caught during testing, not theoretical: a range
+  submission inserts every row in one transaction, and SQLite's
+  `datetime('now')` only has second resolution, so all rows from one
+  range tie on `created_at`. Ties then fall back to the
+  `(subnet_id, ip_address)` unique index's own scan order, which is a
+  **lexicographic string sort on `ip_address`**, not numeric
+  (`"10.1.11.10"` sorts before `"10.1.11.5"`) — producing a visibly
+  scrambled list. `id` (autoincrement PK) reflects actual insertion
+  order, which is address order. Don't "simplify" this back to
+  `created_at`.
+
 ## Things Copilot should NOT suggest
 
 - Don't suggest `modernc.org/sqlite`, `bcrypt`, or reintroducing a subnet/IP
@@ -530,3 +584,26 @@ repeatedly failing their login on purpose).
   it needs real server-side pagination.
 - Don't hardcode hex/rgba colors in admin UI for status/utilization —
   use Oat's theme CSS variables so it stays correct in dark mode.
+- Don't add `ip_start`/`ip_end` columns to `subnet_reserved_ips` — a
+  reserved range is deliberately expanded into individual rows at
+  submission time, not stored as a range.
+- Don't let a reserved-IP range submission insert some rows and skip
+  others on a conflict — wrap the whole range in one `db.WithTx` and
+  reject all-or-nothing, same as the subnet/site-env-map form's conflict
+  handling philosophy but applied to a multi-row insert.
+- Don't skip the `subnets.MaxReserveRangeSize` cap on a reserved-range
+  submission, and don't raise it without a specific reason — it's the
+  enforced definition of the work item's "small range" language.
+- Don't put `ExpandReserveRange` (or any reserved-IP validation) in the
+  admin/controller package — it's pure CIDR/address math and belongs in
+  `internal/subnets`, same boundary rule as the rest of that package.
+- Don't build the reserved-IPs admin UI as an htmx fragment on the
+  subnet edit form — it's a full page
+  (`/admin/subnets/{id}/reserved-ips`), a deliberate choice for this
+  feature.
+- Don't block reserving an IP that's currently actively allocated —
+  considered and intentionally not required.
+- Don't order `ListSubnetReservedIPsForAdmin` by `created_at` — it's a
+  real, previously-shipped bug (rows from one range submission tie on
+  second-resolution timestamps and sort lexicographically by
+  `ip_address` instead). Use `id`.
