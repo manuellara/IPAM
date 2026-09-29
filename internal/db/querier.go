@@ -36,6 +36,18 @@ type Querier interface {
 	GetSubnet(ctx context.Context, id int64) (Subnet, error)
 	GetUserRoleNames(ctx context.Context, userID int64) ([]string, error)
 	ListActiveAllocatedIPsForSubnet(ctx context.Context, subnetID int64) ([]string, error)
+	// System-wide export. ORDER BY ia.id, not ip_address -- ip_address is
+	// TEXT and sorts lexicographically, not numerically (same bug as
+	// ListSubnetReservedIPsForAdmin, fixed in IPAM-39). subnet_cidr sort
+	// groups rows by subnet for readability; within a subnet, id reflects
+	// allocation order.
+	ListActiveAllocationsForExport(ctx context.Context) ([]ListActiveAllocationsForExportRow, error)
+	// Subnet-scoped export (subnet_id on the route). A separate named
+	// query rather than a dynamic/optional WHERE, matching how
+	// CountActiveAllocationsForSubnet stays separate from
+	// ListSubnetsWithCounts elsewhere in this file -- not a shared
+	// parameterized query.
+	ListActiveAllocationsForSubnetExport(ctx context.Context, subnetID int64) ([]ListActiveAllocationsForSubnetExportRow, error)
 	// Load active site and env tokens for client-side filtering by scheme and token.
 	ListActiveSiteEnvTokenValues(ctx context.Context) ([]ListActiveSiteEnvTokenValuesRow, error)
 	// Used for CIDR overlap validation on create/edit -- only ACTIVE subnets

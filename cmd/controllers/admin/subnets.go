@@ -103,6 +103,7 @@ func (c *SubnetsController) editForm(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("invalid subnet id for edit", "id", r.PathValue("id"), "error", err)
 		http.Error(w, "invalid subnet id", http.StatusBadRequest)
 		return
 	}
@@ -154,6 +155,7 @@ func (c *SubnetsController) create(w http.ResponseWriter, r *http.Request) {
 
 	prefix, err := subnets.ValidateSubnet(cidr, existingSubnets, nil)
 	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("subnet create validation failed", "cidr", cidr, "error", err)
 		c.renderNewFormWithError(w, r, cidr, label, err.Error())
 		return
 	}
@@ -166,7 +168,7 @@ func (c *SubnetsController) create(w http.ResponseWriter, r *http.Request) {
 		Cidr:  prefix.String(),
 		Label: labelPtr,
 	}); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to create subnet", "error", err)
+		middleware.GetLoggerFromContext(r.Context()).Error("failed to create subnet", "cidr", prefix.String(), "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -179,6 +181,7 @@ func (c *SubnetsController) create(w http.ResponseWriter, r *http.Request) {
 func (c *SubnetsController) update(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("invalid subnet id for update", "id", r.PathValue("id"), "error", err)
 		http.Error(w, "invalid subnet id", http.StatusBadRequest)
 		return
 	}
@@ -201,6 +204,7 @@ func (c *SubnetsController) update(w http.ResponseWriter, r *http.Request) {
 
 	prefix, err := subnets.ValidateSubnet(cidr, existingSubnets, &id)
 	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("subnet update validation failed", "id", id, "cidr", cidr, "error", err)
 		c.renderEditFormWithError(w, r, id, cidr, label, active, err.Error())
 		return
 	}

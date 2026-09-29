@@ -478,6 +478,37 @@ repeatedly failing their login on purpose).
   order, which is address order. Don't "simplify" this back to
   `created_at`.
 
+## Allocation CSV export (Cycle 3, IPAM-41)
+
+- **`GET /admin/allocations/export.csv` exports `ip_allocations`,
+  nothing else.** Not `subnets`, not `subnet_reserved_ips` — those are
+  IPAM-39's table. This is a dump of addresses actually allocated
+  (request approval, admin-direct, or CSV import), active
+  (`released_at IS NULL`) only, no toggle for released rows in v1.
+- **One route, two sqlc queries** — no `subnet_id` query param means
+  system-wide (`ListActiveAllocationsForExport`); `?subnet_id=` scopes
+  to one subnet (`ListActiveAllocationsForSubnetExport`). Two separate
+  named queries, not one dynamic `WHERE`, matching the
+  `CountActiveAllocationsForSubnet`-stays-separate-from-
+  `ListSubnetsWithCounts` pattern elsewhere in this file.
+- **`ORDER BY ... id`, not `ip_address`** — same lexicographic-string-
+  sort trap as `ListSubnetReservedIPsForAdmin` (`ip_address` is `TEXT`).
+  Applied here from the start after being caught as a real bug in
+  IPAM-39.
+- **`Source` column exists because `Requester` is blank for 3 of the 4
+  allocation sources** (`manual`, `csv_import`, `admin_direct` have no
+  `request_id`; only `source = 'request'` rows have a requester) —
+  `Source` explains the blank rather than leaving it unexplained.
+- **`Status` is a hardcoded `"Active"` constant**, not derived —
+  correct for v1 since only active rows are ever exported; exists as a
+  column now so an eventual `include_released` option doesn't need a
+  CSV schema change.
+- **Per-subnet export link is a per-row action on `/admin/subnets`,
+  not on the subnet edit form.** It started on the edit form (next to
+  Manage Reserved IPs) and was deliberately moved — exporting isn't an
+  edit action, unlike managing reservations, which legitimately is a
+  configuration action and stays on the edit form.
+
 ## Things Copilot should NOT suggest
 
 - Don't suggest `modernc.org/sqlite`, `bcrypt`, or reintroducing a subnet/IP
@@ -607,3 +638,9 @@ repeatedly failing their login on purpose).
   real, previously-shipped bug (rows from one range submission tie on
   second-resolution timestamps and sort lexicographically by
   `ip_address` instead). Use `id`.
+- Don't confuse the allocation CSV export with `subnets` or
+  `subnet_reserved_ips` — it exports `ip_allocations` only.
+- Don't order the allocation export queries by `ip_address` — same
+  lexicographic-sort bug as reserved IPs. Use `id`.
+- Don't put the per-subnet allocation-export link on the subnet edit
+  form — it's a per-row action on the `/admin/subnets` list page.

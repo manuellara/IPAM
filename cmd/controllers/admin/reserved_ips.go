@@ -3,7 +3,6 @@ package admin
 import (
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -41,6 +40,7 @@ func (c *ReservedIPController) RegisterReservedIPRoutes(mux *http.ServeMux, mw m
 func (c *ReservedIPController) list(w http.ResponseWriter, r *http.Request) {
 	subnetID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("invalid subnet id for reserved IP list", "id", r.PathValue("id"), "error", err)
 		http.NotFound(w, r)
 		return
 	}
@@ -52,12 +52,14 @@ func (c *ReservedIPController) render(w http.ResponseWriter, r *http.Request, su
 
 	subnet, err := c.store.GetSubnet(ctx, subnetID)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Error("failed to load subnet for reserved IPs", "subnet_id", subnetID, "error", err)
 		http.NotFound(w, r)
 		return
 	}
 
 	rows, err := c.store.ListSubnetReservedIPsForAdmin(ctx, subnetID)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Error("failed to list reserved IPs", "subnet_id", subnetID, "error", err)
 		http.Error(w, "failed to load reserved IPs", http.StatusInternalServerError)
 		return
 	}
@@ -90,17 +92,20 @@ func (c *ReservedIPController) create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	subnetID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Warn("invalid subnet id for reserved IP create", "id", r.PathValue("id"), "error", err)
 		http.NotFound(w, r)
 		return
 	}
 
 	subnet, err := c.store.GetSubnet(ctx, subnetID)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Error("failed to load subnet for reserved IP create", "subnet_id", subnetID, "error", err)
 		http.NotFound(w, r)
 		return
 	}
 	prefix, err := netip.ParsePrefix(subnet.Cidr)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Error("invalid stored subnet CIDR for reserved IP create", "subnet_id", subnetID, "cidr", subnet.Cidr, "error", err)
 		http.Error(w, "subnet has an invalid CIDR on record", http.StatusInternalServerError)
 		return
 	}
@@ -114,17 +119,20 @@ func (c *ReservedIPController) create(w http.ResponseWriter, r *http.Request) {
 
 	start, err := netip.ParseAddr(startStr)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Warn("invalid reserved IP start address", "subnet_id", subnetID, "start_ip", startStr, "error", err)
 		c.render(w, r, subnetID, "start IP is not a valid address")
 		return
 	}
 	end, err := netip.ParseAddr(endStr)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Warn("invalid reserved IP end address", "subnet_id", subnetID, "end_ip", endStr, "error", err)
 		c.render(w, r, subnetID, "end IP is not a valid address")
 		return
 	}
 
 	addrs, err := subnets.ExpandReserveRange(prefix, start, end)
 	if err != nil {
+		middleware.GetLoggerFromContext(ctx).Warn("invalid reserved IP range", "subnet_id", subnetID, "start_ip", startStr, "end_ip", endStr, "error", err)
 		c.render(w, r, subnetID, err.Error())
 		return
 	}
@@ -149,10 +157,11 @@ func (c *ReservedIPController) create(w http.ResponseWriter, r *http.Request) {
 
 	if txErr != nil {
 		if isUniqueConstraintErr(txErr) {
+			middleware.GetLoggerFromContext(ctx).Warn("reserved IP range already contains reserved addresses", "subnet_id", subnetID, "start_ip", startStr, "end_ip", endStr, "error", txErr)
 			c.render(w, r, subnetID, "one or more addresses in that range are already reserved -- no rows were added")
 			return
 		}
-		slog.Error("failed to create reserved IP range", "subnet_id", subnetID, "error", txErr)
+		middleware.GetLoggerFromContext(ctx).Error("failed to create reserved IP range", "subnet_id", subnetID, "start_ip", startStr, "end_ip", endStr, "error", txErr)
 		c.render(w, r, subnetID, "failed to save reserved range")
 		return
 	}
@@ -164,11 +173,13 @@ func (c *ReservedIPController) create(w http.ResponseWriter, r *http.Request) {
 func (c *ReservedIPController) delete(w http.ResponseWriter, r *http.Request) {
 	subnetID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("invalid subnet id for reserved IP delete", "id", r.PathValue("id"), "error", err)
 		http.NotFound(w, r)
 		return
 	}
 	reservedID, err := strconv.ParseInt(r.PathValue("reservedID"), 10, 64)
 	if err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Warn("invalid reserved IP id for delete", "subnet_id", subnetID, "id", r.PathValue("reservedID"), "error", err)
 		http.NotFound(w, r)
 		return
 	}
@@ -177,6 +188,7 @@ func (c *ReservedIPController) delete(w http.ResponseWriter, r *http.Request) {
 		ID:       reservedID,
 		SubnetID: subnetID,
 	}); err != nil {
+		middleware.GetLoggerFromContext(r.Context()).Error("failed to delete reserved IP", "subnet_id", subnetID, "reserved_ip_id", reservedID, "error", err)
 		http.Error(w, "failed to delete reserved IP", http.StatusInternalServerError)
 		return
 	}

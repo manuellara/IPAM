@@ -186,3 +186,57 @@ RETURNING *;
 -- crafted delete for a row under a different subnet.
 DELETE FROM subnet_reserved_ips WHERE id = ? AND subnet_id = ?;
 ```
+
+## Reference: allocation export queries (IPAM-41)
+
+Backing `GET /admin/allocations/export.csv`. Two separate named queries
+(system-wide vs. `?subnet_id=`-scoped), not one query with a dynamic/
+optional `WHERE` -- matches the existing pattern of
+`CountActiveAllocationsForSubnet` staying separate from
+`ListSubnetsWithCounts` rather than parameterizing one query for both
+shapes.
+
+```sql
+-- name: ListActiveAllocationsForExport :many
+-- ORDER BY sub.cidr, ia.id -- NOT ia.ip_address. Same lexicographic-
+-- string-sort trap as ListSubnetReservedIPsForAdmin (IPAM-39):
+-- ip_address is TEXT, so sorting by it directly gives wrong ordering
+-- ("10.1.11.10" before "10.1.11.5"). id reflects allocation order.
+SELECT
+    sub.cidr AS subnet_cidr,
+    ia.ip_address,
+    s.hostname,
+    s.source,
+    u.display_name AS requester,
+    ia.allocated_at
+FROM ip_allocations ia
+JOIN subnets sub ON sub.id = ia.subnet_id
+LEFT JOIN servers s ON s.id = ia.server_id
+LEFT JOIN requests r ON r.id = ia.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+WHERE ia.released_at IS NULL
+ORDER BY sub.cidr, ia.id;
+
+-- name: ListActiveAllocationsForSubnetExport :many
+SELECT
+    sub.cidr AS subnet_cidr,
+    ia.ip_address,
+    s.hostname,
+    s.source,
+    u.display_name AS requester,
+    ia.allocated_at
+FROM ip_allocations ia
+JOIN subnets sub ON sub.id = ia.subnet_id
+LEFT JOIN servers s ON s.id = ia.server_id
+LEFT JOIN requests r ON r.id = ia.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+WHERE ia.released_at IS NULL AND ia.subnet_id = sqlc.arg(subnet_id)
+ORDER BY ia.id;
+```
+
+`hostname`, `source`, and `requester` are all nullable (`*string`) --
+`servers`/`requests`/`users` are `LEFT JOIN`ed because admin-direct and
+CSV-import allocations have no `request_id`, and even request-sourced
+ones may have no matching `servers` row yet in edge cases. Dereference
+with the usual fallback-to-`""` pattern at the CSV-writing boundary, not
+in the query.

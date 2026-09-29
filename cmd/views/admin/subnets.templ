@@ -35,7 +35,10 @@ templ SubnetsListMain(principal middleware.Principal, rows []SubnetRow) {
 				<p style="margin-top: 0; opacity: 0.72;">CIDR ranges available for allocation, with current utilization.</p>
 				<input type="search" x-model="search" placeholder="Search CIDR, label, or site/env" aria-label="Search subnets" style="margin-top: 1rem;"/>
 			</div>
-			<a href="/admin/subnets/new" class="button">New Subnet</a>
+			<div style="display: flex; gap: 0.75rem; align-items: center;">
+				<a href="/admin/allocations/export.csv" class="button" download>Export All CSV</a>
+				<a href="/admin/subnets/new" class="button">New Subnet</a>
+			</div>
 		</header>
 		<table>
 			<thead>
@@ -78,6 +81,7 @@ templ SubnetsListMain(principal middleware.Principal, rows []SubnetRow) {
 							<a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/edit", row.ID)) }>Edit</a>
 							if principal.HasAnyRole(middleware.RoleAdmin) {
 								· <a href={ templ.URL(fmt.Sprintf("/admin/subnets/%d/reserved-ips", row.ID)) }>Reserved IPs</a>
+								· <a href={ templ.URL(fmt.Sprintf("/admin/allocations/export.csv?subnet_id=%d", row.ID)) }>Export allocations (CSV)</a>
 							}
 						</td>
 					</tr>

@@ -60,6 +60,7 @@ func (c *AuthSettingsController) authSettings(w http.ResponseWriter, r *http.Req
 func (c *AuthSettingsController) updateOIDC(w http.ResponseWriter, r *http.Request) {
 	issuerURL := strings.TrimSpace(r.FormValue("issuer_url"))
 	if checkboxToInt64(r.FormValue("enabled")) != 0 && issuerURL == "" {
+		middleware.GetLoggerFromContext(r.Context()).Warn("oidc settings validation failed", "reason", "issuer URL required when enabled")
 		http.Error(w, "OIDC issuer URL is required when OIDC is enabled", http.StatusBadRequest)
 		return
 	}
@@ -73,7 +74,7 @@ func (c *AuthSettingsController) updateOIDC(w http.ResponseWriter, r *http.Reque
 
 	err := c.updateOIDCConfig(r, issuerURL)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("auth settings update failed", "error", err)
+		middleware.GetLoggerFromContext(r.Context()).Error("oidc settings update failed", "enabled", checkboxToInt64(r.FormValue("enabled")) != 0, "error", err)
 		http.Error(w, "Unable to save authentication settings", http.StatusInternalServerError)
 		return
 	}
@@ -91,17 +92,19 @@ func (c *AuthSettingsController) updateLDAP(w http.ResponseWriter, r *http.Reque
 	if portStr != "" {
 		p, err := parseLDAPPort(portStr)
 		if err != nil {
+			middleware.GetLoggerFromContext(r.Context()).Warn("ldap settings validation failed", "port", portStr, "error", err)
 			http.Error(w, "LDAP port must be between 1 and 65535", http.StatusBadRequest)
 			return
 		}
 		port = &p
 	} else if enabled {
+		middleware.GetLoggerFromContext(r.Context()).Warn("ldap settings validation failed", "reason", "port required when enabled")
 		http.Error(w, "LDAP port is required when LDAP is enabled", http.StatusBadRequest)
 		return
 	}
 
 	if err := c.updateLDAPConfig(r, port); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("auth settings update failed", "error", err)
+		middleware.GetLoggerFromContext(r.Context()).Error("ldap settings update failed", "enabled", enabled, "error", err)
 		http.Error(w, "Unable to save authentication settings", http.StatusInternalServerError)
 		return
 	}
