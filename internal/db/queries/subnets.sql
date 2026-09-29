@@ -97,3 +97,45 @@ VALUES (
     sqlc.arg(server_id)
 )
 RETURNING *;
+
+-- name: ListActiveAllocationsForExport :many
+-- System-wide export. ORDER BY ia.id, not ip_address -- ip_address is
+-- TEXT and sorts lexicographically, not numerically (same bug as
+-- ListSubnetReservedIPsForAdmin, fixed in IPAM-39). subnet_cidr sort
+-- groups rows by subnet for readability; within a subnet, id reflects
+-- allocation order.
+SELECT
+    sub.cidr AS subnet_cidr,
+    ia.ip_address,
+    s.hostname,
+    s.source,
+    u.display_name AS requester,
+    ia.allocated_at
+FROM ip_allocations ia
+JOIN subnets sub ON sub.id = ia.subnet_id
+LEFT JOIN servers s ON s.id = ia.server_id
+LEFT JOIN requests r ON r.id = ia.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+WHERE ia.released_at IS NULL
+ORDER BY sub.cidr, ia.id;
+
+-- name: ListActiveAllocationsForSubnetExport :many
+-- Subnet-scoped export (subnet_id on the route). A separate named
+-- query rather than a dynamic/optional WHERE, matching how
+-- CountActiveAllocationsForSubnet stays separate from
+-- ListSubnetsWithCounts elsewhere in this file -- not a shared
+-- parameterized query.
+SELECT
+    sub.cidr AS subnet_cidr,
+    ia.ip_address,
+    s.hostname,
+    s.source,
+    u.display_name AS requester,
+    ia.allocated_at
+FROM ip_allocations ia
+JOIN subnets sub ON sub.id = ia.subnet_id
+LEFT JOIN servers s ON s.id = ia.server_id
+LEFT JOIN requests r ON r.id = ia.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+WHERE ia.released_at IS NULL AND ia.subnet_id = sqlc.arg(subnet_id)
+ORDER BY ia.id;

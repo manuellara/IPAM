@@ -97,7 +97,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"container\" x-data=\"{ search: '' }\"><header style=\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;\"><div><h1 style=\"margin-bottom: 0;\">Subnets</h1><p style=\"margin-top: 0; opacity: 0.72;\">CIDR ranges available for allocation, with current utilization.</p><input type=\"search\" x-model=\"search\" placeholder=\"Search CIDR, label, or site/env\" aria-label=\"Search subnets\" style=\"margin-top: 1rem;\"></div><a href=\"/admin/subnets/new\" class=\"button\">New Subnet</a></header><table><thead><tr><th>CIDR</th><th>Label</th><th>Site/Env</th><th>Status</th><th>Utilization</th><th>Free</th><th></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"container\" x-data=\"{ search: '' }\"><header style=\"display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;\"><div><h1 style=\"margin-bottom: 0;\">Subnets</h1><p style=\"margin-top: 0; opacity: 0.72;\">CIDR ranges available for allocation, with current utilization.</p><input type=\"search\" x-model=\"search\" placeholder=\"Search CIDR, label, or site/env\" aria-label=\"Search subnets\" style=\"margin-top: 1rem;\"></div><div style=\"display: flex; gap: 0.75rem; align-items: center;\"><a href=\"/admin/allocations/export.csv\" class=\"button\" download>Export All CSV</a> <a href=\"/admin/subnets/new\" class=\"button\">New Subnet</a></div></header><table><thead><tr><th>CIDR</th><th>Label</th><th>Site/Env</th><th>Status</th><th>Utilization</th><th>Free</th><th></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -109,7 +109,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("!search || $el.dataset.search.includes(search.toLowerCase())"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 54, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 57, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
@@ -122,7 +122,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(strings.ToLower(strings.Join([]string{row.CIDR, row.Label, row.SiteEnvs}, " ")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 54, Col: 189}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 57, Col: 189}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -135,7 +135,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(templ.SafeCSS(rowStyle(row.Active)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 54, Col: 235}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 57, Col: 235}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -148,7 +148,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(row.CIDR)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 55, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 58, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -161,7 +161,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(row.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 56, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 59, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -174,7 +174,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(displaySiteEnvs(row.SiteEnvs))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 57, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 60, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -207,7 +207,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(templ.SafeCSS(fmt.Sprintf("width: %.2f%%; background: var(--primary);", usedPct)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 68, Col: 102}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 71, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -220,7 +220,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(templ.SafeCSS(fmt.Sprintf("width: %.2f%%; background: var(--warning);", reservedPct)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 69, Col: 106}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 72, Col: 106}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -233,7 +233,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(templ.SafeCSS(fmt.Sprintf("width: %.2f%%; background: var(--muted);", freePct)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 70, Col: 100}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 73, Col: 100}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -246,7 +246,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d allocated · %d reserved · %d%%", row.Util.Used, row.Util.Reserved, percentUsed(row.Util.Used, row.Util.Capacity)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 73, Col: 141}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 76, Col: 141}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -259,7 +259,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(row.Util.Free))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 76, Col: 37}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 79, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -272,7 +272,7 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 			var templ_7745c5c3_Var15 templ.SafeURL
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/subnets/%d/edit", row.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 78, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 81, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -290,33 +290,46 @@ func SubnetsListMain(principal middleware.Principal, rows []SubnetRow) templ.Com
 				var templ_7745c5c3_Var16 templ.SafeURL
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/subnets/%d/reserved-ips", row.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 80, Col: 85}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 83, Col: 85}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\">Reserved IPs</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\">Reserved IPs</a> · <a href=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var17 templ.SafeURL
+				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/allocations/export.csv?subnet_id=%d", row.ID)))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `cmd/views/admin/subnets.templ`, Line: 84, Col: 97}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\">Export allocations (CSV)</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</tbody></table>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</tbody></table>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(rows) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<p style=\"opacity: 0.72; text-align: center; margin-top: 2rem;\">No subnets yet.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<p style=\"opacity: 0.72; text-align: center; margin-top: 2rem;\">No subnets yet.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

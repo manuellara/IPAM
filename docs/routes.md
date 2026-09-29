@@ -91,7 +91,7 @@ role, and **None** means no auth required.
 | FRAGMENT | POST | `/admin/users/{id}/roles` | `admin` | |
 | PAGE | GET | `/admin/audit-log` | `admin` (`viewer`: read-only) | **Not yet built** (planned work item, unscheduled). Unlike `/admin/subnets`, this table is unbounded/append-only — it must use real server-side pagination and filtering, not client-side `x-show`. See "Admin List Pagination Convention" in `docs/workflows.md`. |
 | ACTION | POST | `/admin/allocations` | `admin` | Admin-direct allocation; also creates a `servers` row |
-| PAGE | GET | `/admin/allocations/export.csv` | `admin` | Current (non-released) allocations |
+| PAGE | GET | `/admin/allocations/export.csv` | `admin` | Current (non-released) allocations only, no toggle for released rows in v1. System-wide by default; `?subnet_id=` scopes to one subnet (same route, no separate endpoint). Columns: Subnet, IP Address, Hostname, Source, Requester, Allocated At, Status (constant "Active" for now). The per-subnet link lives on the `/admin/subnets` list page (per-row), not the subnet edit form. |
 | PAGE | GET | `/admin/auth-settings` | `admin` | View/edit `oidc_config` and `ldap_config` |
 | ACTION | POST | `/admin/auth-settings` | `admin` | Takes effect on next `/login` load, no restart |
 | PAGE | GET | `/admin/servers` | `admin` | All servers (any origin), search by hostname/description/site/env/app/role/asset_type |

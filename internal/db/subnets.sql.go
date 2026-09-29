@@ -175,6 +175,128 @@ func (q *Queries) ListActiveAllocatedIPsForSubnet(ctx context.Context, subnetID 
 	return items, nil
 }
 
+const listActiveAllocationsForExport = `-- name: ListActiveAllocationsForExport :many
+SELECT
+    sub.cidr AS subnet_cidr,
+    ia.ip_address,
+    s.hostname,
+    s.source,
+    u.display_name AS requester,
+    ia.allocated_at
+FROM ip_allocations ia
+JOIN subnets sub ON sub.id = ia.subnet_id
+LEFT JOIN servers s ON s.id = ia.server_id
+LEFT JOIN requests r ON r.id = ia.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+WHERE ia.released_at IS NULL
+ORDER BY sub.cidr, ia.id
+`
+
+type ListActiveAllocationsForExportRow struct {
+	SubnetCidr  string  `json:"subnet_cidr"`
+	IpAddress   string  `json:"ip_address"`
+	Hostname    *string `json:"hostname"`
+	Source      *string `json:"source"`
+	Requester   *string `json:"requester"`
+	AllocatedAt string  `json:"allocated_at"`
+}
+
+// System-wide export. ORDER BY ia.id, not ip_address -- ip_address is
+// TEXT and sorts lexicographically, not numerically (same bug as
+// ListSubnetReservedIPsForAdmin, fixed in IPAM-39). subnet_cidr sort
+// groups rows by subnet for readability; within a subnet, id reflects
+// allocation order.
+func (q *Queries) ListActiveAllocationsForExport(ctx context.Context) ([]ListActiveAllocationsForExportRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveAllocationsForExport)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveAllocationsForExportRow{}
+	for rows.Next() {
+		var i ListActiveAllocationsForExportRow
+		if err := rows.Scan(
+			&i.SubnetCidr,
+			&i.IpAddress,
+			&i.Hostname,
+			&i.Source,
+			&i.Requester,
+			&i.AllocatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveAllocationsForSubnetExport = `-- name: ListActiveAllocationsForSubnetExport :many
+SELECT
+    sub.cidr AS subnet_cidr,
+    ia.ip_address,
+    s.hostname,
+    s.source,
+    u.display_name AS requester,
+    ia.allocated_at
+FROM ip_allocations ia
+JOIN subnets sub ON sub.id = ia.subnet_id
+LEFT JOIN servers s ON s.id = ia.server_id
+LEFT JOIN requests r ON r.id = ia.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+WHERE ia.released_at IS NULL AND ia.subnet_id = ?1
+ORDER BY ia.id
+`
+
+type ListActiveAllocationsForSubnetExportRow struct {
+	SubnetCidr  string  `json:"subnet_cidr"`
+	IpAddress   string  `json:"ip_address"`
+	Hostname    *string `json:"hostname"`
+	Source      *string `json:"source"`
+	Requester   *string `json:"requester"`
+	AllocatedAt string  `json:"allocated_at"`
+}
+
+// Subnet-scoped export (subnet_id on the route). A separate named
+// query rather than a dynamic/optional WHERE, matching how
+// CountActiveAllocationsForSubnet stays separate from
+// ListSubnetsWithCounts elsewhere in this file -- not a shared
+// parameterized query.
+func (q *Queries) ListActiveAllocationsForSubnetExport(ctx context.Context, subnetID int64) ([]ListActiveAllocationsForSubnetExportRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveAllocationsForSubnetExport, subnetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveAllocationsForSubnetExportRow{}
+	for rows.Next() {
+		var i ListActiveAllocationsForSubnetExportRow
+		if err := rows.Scan(
+			&i.SubnetCidr,
+			&i.IpAddress,
+			&i.Hostname,
+			&i.Source,
+			&i.Requester,
+			&i.AllocatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActiveSubnets = `-- name: ListActiveSubnets :many
 SELECT id, cidr FROM subnets WHERE active = 1
 `

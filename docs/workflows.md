@@ -258,6 +258,54 @@ skip this entirely, see above.)*
   just prevents that address from being handed out again once it's
   eventually released. Considered and deliberately not blocked.
 
+## Allocation CSV Export (IPAM-41)
+
+- **One route, `GET /admin/allocations/export.csv`, not two.** No
+  `subnet_id` query param means system-wide; `?subnet_id=` scopes to
+  one subnet. Two separate sqlc queries back it
+  (`ListActiveAllocationsForExport` / `ListActiveAllocationsForSubnetExport`)
+  since the codebase's pattern is a dedicated named query per shape
+  rather than one dynamic/optional `WHERE`, but they share one HTTP
+  route and one handler that dispatches on whether the query param is
+  present.
+- **Exports `ip_allocations`, not `subnets` or `subnet_reserved_ips`.**
+  Worth stating plainly since it caused real confusion during
+  development: this feature has nothing to do with reserved/excluded
+  IPs (IPAM-39) or subnet configuration — it's a point-in-time dump of
+  addresses that have actually been *allocated* (via request approval,
+  admin-direct allocation, or CSV import). `subnets` is only
+  `JOIN`ed in for the CIDR label column.
+- **Active-only, no `include_released` toggle in v1** — matches the
+  work item's acceptance criteria exactly. A historical/released-rows
+  export is a distinct future feature if actually needed, not folded
+  into this one speculatively.
+- **`ORDER BY ... ia.id`, not `ia.ip_address`** — same
+  lexicographic-string-sort trap as `ListSubnetReservedIPsForAdmin`
+  (IPAM-39): `ip_address` is `TEXT`, so sorting on it directly produces
+  wrong ordering. Applied here from the start rather than being
+  discovered as a second bug.
+- **Source column added beyond the work item's literal column list**
+  (IP, hostname, subnet, requester, allocated date, status) — `source`
+  (`request`/`manual`/`csv_import`/`admin_direct`) is included because
+  `requester` is only meaningful for `source = 'request'` rows; the
+  other three sources leave `Requester` blank, and `Source` is what
+  explains why, rather than leaving an unexplained empty column.
+- **`Status` is a hardcoded `"Active"` constant** for every row in v1 —
+  not derived from anything, since only active (non-released)
+  allocations are ever included. It exists as a column now so a future
+  `include_released` addition doesn't require a CSV schema change,
+  just populating it with "Released" for those rows.
+- **Per-subnet export link lives on the `/admin/subnets` list page,
+  per-row — not on the subnet edit form.** Initially placed on the
+  edit form (next to the Reserved IPs link), then deliberately moved:
+  an export isn't an edit action, and a per-row link on the list lets
+  an admin export a subnet's allocations without detouring through
+  Edit first. Don't put per-subnet export actions on edit/detail forms
+  by default — list-page per-row actions are the better fit unless
+  there's a specific reason to co-locate with editing (as Reserved IPs
+  legitimately is, since managing reservations is itself a
+  configuration action).
+
 ## Site/Env Mapping Admin UI (Cycle 3)
 
 - **`/admin/site-env-map`** manages `site_env_subnet_map` rows — one
