@@ -1,6 +1,11 @@
 -- name: ListNamingSchemes :many
 SELECT id, name, naming_mode FROM naming_schemes ORDER BY name;
 
+-- name: CreateNamingSchemeTokenValue :one
+INSERT INTO naming_scheme_token_values (scheme_id, token, code, label)
+VALUES (sqlc.arg(scheme_id), sqlc.arg(token), UPPER(sqlc.arg(code)), sqlc.arg(label))
+RETURNING *;
+
 -- name: ListActiveSiteEnvTokenValues :many
 -- Load active site and env tokens for client-side filtering by scheme and token.
 SELECT scheme_id, token, code, label
