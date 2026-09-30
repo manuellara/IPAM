@@ -240,3 +240,33 @@ CSV-import allocations have no `request_id`, and even request-sourced
 ones may have no matching `servers` row yet in edge cases. Dereference
 with the usual fallback-to-`""` pattern at the CSV-writing boundary, not
 in the query.
+
+## Reference: naming scheme queries (IPAM-16/17)
+
+Backing the not-yet-built `/admin/naming-schemes/{id}/tokens` admin UI
+(IPAM-18) and the sequence-generation logic (IPAM-17, still being
+designed). So far only the token-value insert is settled:
+
+```sql
+-- name: CreateNamingSchemeTokenValue :one
+-- UPPER(?) on code, not a rejection -- site/env/app/role codes are
+-- silently normalized to uppercase regardless of what the admin typed,
+-- same convention as site_code/env_code elsewhere in the schema. This
+-- runs before trg_token_value_length_insert evaluates NEW.code, so the
+-- trigger's exact-length check sees the already-uppercased value --
+-- order of operations works out fine in SQLite (UPPER() doesn't change
+-- length for the ASCII codes this table stores). Don't duplicate an
+-- uppercase check in Go (internal/naming.ValidateTokenCode) -- that
+-- function is length-only by design; casing is the query's job.
+INSERT INTO naming_scheme_token_values (scheme_id, token, code, label)
+VALUES (?, ?, UPPER(?), ?)
+RETURNING *;
+```
+
+If an `UpdateNamingSchemeTokenValue` query is added later (editing a
+code in place, not just toggling `active`), wrap its `code` argument in
+`UPPER(?)` too, for the same reason.
+
+IPAM-17's sequence-generation queries (`naming_sequences` lock/read/
+increment, run inside the approval transaction) aren't scoped yet --
+this section will grow once that design is settled.

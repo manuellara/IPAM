@@ -9,6 +9,38 @@ import (
 	"context"
 )
 
+const createNamingSchemeTokenValue = `-- name: CreateNamingSchemeTokenValue :one
+INSERT INTO naming_scheme_token_values (scheme_id, token, code, label)
+VALUES (?1, ?2, UPPER(?3), ?4)
+RETURNING id, scheme_id, token, code, label, active
+`
+
+type CreateNamingSchemeTokenValueParams struct {
+	SchemeID int64  `json:"scheme_id"`
+	Token    string `json:"token"`
+	Code     string `json:"code"`
+	Label    string `json:"label"`
+}
+
+func (q *Queries) CreateNamingSchemeTokenValue(ctx context.Context, arg CreateNamingSchemeTokenValueParams) (NamingSchemeTokenValue, error) {
+	row := q.db.QueryRowContext(ctx, createNamingSchemeTokenValue,
+		arg.SchemeID,
+		arg.Token,
+		arg.Code,
+		arg.Label,
+	)
+	var i NamingSchemeTokenValue
+	err := row.Scan(
+		&i.ID,
+		&i.SchemeID,
+		&i.Token,
+		&i.Code,
+		&i.Label,
+		&i.Active,
+	)
+	return i, err
+}
+
 const createSiteEnvSubnetMap = `-- name: CreateSiteEnvSubnetMap :one
 INSERT INTO site_env_subnet_map (site_code, env_code, naming_scheme_id, subnet_id, active)
 VALUES (?1, ?2, ?3, ?4, 1)

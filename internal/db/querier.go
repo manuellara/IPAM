@@ -19,6 +19,7 @@ type Querier interface {
 	CreateIPAllocation(ctx context.Context, arg CreateIPAllocationParams) (IpAllocation, error)
 	CreateLDAPUser(ctx context.Context, arg CreateLDAPUserParams) (User, error)
 	CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error)
+	CreateNamingSchemeTokenValue(ctx context.Context, arg CreateNamingSchemeTokenValueParams) (NamingSchemeTokenValue, error)
 	CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error)
 	CreateSiteEnvSubnetMap(ctx context.Context, arg CreateSiteEnvSubnetMapParams) (SiteEnvSubnetMap, error)
 	CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Subnet, error)
