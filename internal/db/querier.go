@@ -19,11 +19,17 @@ type Querier interface {
 	CreateIPAllocation(ctx context.Context, arg CreateIPAllocationParams) (IpAllocation, error)
 	CreateLDAPUser(ctx context.Context, arg CreateLDAPUserParams) (User, error)
 	CreateLocalAdminUser(ctx context.Context, passwordHash *string) (User, error)
+	// UPPER(?) on code -- see queries.instructions.md's
+	// "Reference: naming scheme queries (IPAM-16/17)" section.
 	CreateNamingSchemeTokenValue(ctx context.Context, arg CreateNamingSchemeTokenValueParams) (NamingSchemeTokenValue, error)
 	CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error)
 	CreateSiteEnvSubnetMap(ctx context.Context, arg CreateSiteEnvSubnetMapParams) (SiteEnvSubnetMap, error)
 	CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Subnet, error)
 	CreateSubnetReservedIP(ctx context.Context, arg CreateSubnetReservedIPParams) (SubnetReservedIp, error)
+	// Deactivate, never delete -- a request can still reference an inactive
+	// code's historical value. Scoped by scheme_id too, same
+	// belt-and-suspenders pattern as DeleteSubnetReservedIP.
+	DeactivateNamingSchemeTokenValue(ctx context.Context, arg DeactivateNamingSchemeTokenValueParams) error
 	// Scoped by subnet_id too, not just id -- belt-and-suspenders against a
 	// crafted delete for a row under a different subnet.
 	DeleteSubnetReservedIP(ctx context.Context, arg DeleteSubnetReservedIPParams) error
@@ -31,6 +37,7 @@ type Querier interface {
 	GetLDAPUser(ctx context.Context, ldapDn *string) (User, error)
 	GetLocalAdminUser(ctx context.Context) (User, error)
 	GetLoginAttempt(ctx context.Context, arg GetLoginAttemptParams) (LoginAttempt, error)
+	GetNamingScheme(ctx context.Context, id int64) (GetNamingSchemeRow, error)
 	GetOIDCConfig(ctx context.Context) (OidcConfig, error)
 	GetOIDCUser(ctx context.Context, oidcSubject *string) (User, error)
 	GetSiteEnvSubnetMap(ctx context.Context, id int64) (SiteEnvSubnetMap, error)
@@ -56,6 +63,10 @@ type Querier interface {
 	// legitimately reused by a new subnet without being falsely blocked by
 	// its own retired history.
 	ListActiveSubnets(ctx context.Context) ([]ListActiveSubnetsRow, error)
+	// ORDER BY token, code -- no lexicographic-sort trap here (unlike
+	// ip_address/reserved-ips): code is a fixed-length, non-numeric 3-char
+	// abbreviation, so plain string ordering is correct, not just convenient.
+	ListNamingSchemeTokenValues(ctx context.Context, schemeID int64) ([]ListNamingSchemeTokenValuesRow, error)
 	ListNamingSchemes(ctx context.Context) ([]ListNamingSchemesRow, error)
 	ListReservedIPsForSubnet(ctx context.Context, subnetID int64) ([]string, error)
 	// Include scheme and subnet details for the mapping list page.

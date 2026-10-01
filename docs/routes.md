@@ -83,10 +83,10 @@ role, and **None** means no auth required.
 | ACTION | POST | `/admin/site-env-map` | `admin` | On a `(site_code, env_code, naming_scheme_id)` conflict, re-renders inline with an error — no redirect, same UX as the subnet form's overlap error |
 | PAGE | GET | `/admin/site-env-map/{id}/edit` | `admin` | |
 | ACTION | POST | `/admin/site-env-map/{id}` | `admin` | Same conflict handling as create |
-| PAGE | GET | `/admin/naming-schemes` | `admin` | The 4 schemes (Server, Network Device, VM, F5 Virtual Server) |
-| PAGE | GET | `/admin/naming-schemes/{id}` | `admin` | Scheme detail + token value tables + `naming_mode` |
-| PAGE | GET | `/admin/naming-schemes/{id}/tokens/new` | `admin` | |
-| FRAGMENT | POST | `/admin/naming-schemes/{id}/tokens` | `admin` | Exact 3-char code length enforced |
+| PAGE | GET | `/admin/naming-schemes` | `admin` | The 4 schemes (Server, Network Device, VM, F5 Virtual Server) — fixed by the seed migration; no admin UI to create new schemes in v1 (IPAM-18) |
+| PAGE | GET | `/admin/naming-schemes/{id}` | `admin` | Scheme detail + token value tables (site/env/app/role) + inline add-token form, same own-page pattern as `/admin/subnets/{id}/reserved-ips` (IPAM-39) — no separate `/tokens/new` page or FRAGMENT, this is a low-frequency admin action per the "Admin List UI Conventions" rule below |
+| ACTION | POST | `/admin/naming-schemes/{id}/tokens` | `admin` | Exact code length enforced (`internal/naming.ValidateTokenCode`, re-rendered inline on failure) and silently uppercased (`UPPER(?)` in the insert query, not a rejection) |
+| ACTION | POST | `/admin/naming-schemes/{id}/tokens/{tokenID}/deactivate` | `admin` | Deactivates, never deletes — a request can still reference an inactive code's historical value. Scoped by both `id` and `tokenID` |
 | PAGE | GET | `/admin/users` | `admin` | List, assign roles |
 | FRAGMENT | POST | `/admin/users/{id}/roles` | `admin` | |
 | PAGE | GET | `/admin/audit-log` | `admin` (`viewer`: read-only) | **Not yet built** (planned work item, unscheduled). Unlike `/admin/subnets`, this table is unbounded/append-only — it must use real server-side pagination and filtering, not client-side `x-show`. See "Admin List Pagination Convention" in `docs/workflows.md`. |

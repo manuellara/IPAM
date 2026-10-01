@@ -74,6 +74,7 @@ func main() {
 	siteEnvMapController := admin.NewSiteEnvMapController(sqlcService, sessionManager)
 	reservedIPController := admin.NewReservedIPController(sqlcService, databaseService.DB(), sessionManager)
 	allocationsExportController := admin.NewAllocationsExportController(sqlcService, sessionManager)
+	namingSchemeController := admin.NewNamingSchemeController(sqlcService, sessionManager)
 
 	// Initialize the HTTP request multiplexer
 	mux := http.NewServeMux()
@@ -93,6 +94,7 @@ func main() {
 	siteEnvMapController.RegisterSiteEnvMapRoutes(mux, authenticatedMiddleware)
 	reservedIPController.RegisterReservedIPRoutes(mux, authenticatedMiddleware)
 	allocationsExportController.RegisterAllocationsExportRoutes(mux, authenticatedMiddleware)
+	namingSchemeController.RegisterNamingSchemeRoutes(mux, authenticatedMiddleware)
 
 	// Run the HTTP server with session management
 	if err := http.ListenAndServe(":8080", middleware.RecoverMiddleware(mux)); err != nil {
