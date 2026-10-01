@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	admincontroller "github.com/manuellara/ipam/cmd/controllers/admin"
+	"github.com/manuellara/ipam/cmd/controllers/admin"
 	"github.com/manuellara/ipam/cmd/controllers/shared"
 	"github.com/manuellara/ipam/internal/auth"
 	"github.com/manuellara/ipam/internal/config"
@@ -69,11 +69,11 @@ func main() {
 	// Initialize controllers
 	loginController := shared.NewLoginController(sqlcService, databaseService.DB(), sessionManager)
 	dashboardController := shared.NewDashboardController(sqlcService, sessionManager)
-	authSettingsController := admincontroller.NewAuthSettingsController(sqlcService, sessionManager)
-	subnetsController := admincontroller.NewSubnetsController(sqlcService, sessionManager)
-	siteEnvMapController := admincontroller.NewSiteEnvMapController(sqlcService, sessionManager)
-	reservedIPController := admincontroller.NewReservedIPController(sqlcService, databaseService.DB(), sessionManager)
-	allocationsExportController := admincontroller.NewAllocationsExportController(sqlcService, sessionManager)
+	authSettingsController := admin.NewAuthSettingsController(sqlcService, sessionManager)
+	subnetsController := admin.NewSubnetsController(sqlcService, sessionManager)
+	siteEnvMapController := admin.NewSiteEnvMapController(sqlcService, sessionManager)
+	reservedIPController := admin.NewReservedIPController(sqlcService, databaseService.DB(), sessionManager)
+	allocationsExportController := admin.NewAllocationsExportController(sqlcService, sessionManager)
 
 	// Initialize the HTTP request multiplexer
 	mux := http.NewServeMux()
