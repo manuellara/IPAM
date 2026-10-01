@@ -51,14 +51,19 @@ skip this entirely, see above.)*
 2. Concatenate them with no separators into a 12-character prefix.
 3. Lock (or create) the `naming_sequences` row for `(scheme_id,
    computed_prefix)`, within the approval transaction.
-4. Format `last_seq` as the 3-character sequence code:
-   - `0`–`999` → zero-padded decimal (`000`–`999`)
+4. **Increment `last_seq` first, then format the incremented value**
+   (`internal/naming.FormatSequence`, IPAM-17) — not the other way
+   around. `last_seq` defaults to `0` and is never itself issued as a
+   code: the first allocation under a brand-new prefix increments it to
+   `1` and formats `"001"`. `"000"` is permanently unused by design.
+   - `1`–`999` → zero-padded decimal (`"001"`–`"999"`)
    - `1000`–`3599` → letter + 2-digit (`A00`–`Z99`; letter increments
      every 100)
-   - `> 3599` → **hard block** the approval with a clear error requiring
-     manual intervention (retire old servers under that prefix, or pick a
-     different role code). Never silently wrap around.
-5. Increment `last_seq`, save.
+   - `> 3599` → **hard block** the approval with a clear error
+     (`naming.ErrSequenceExhausted`) requiring manual intervention
+     (retire old servers under that prefix, or pick a different role
+     code). Never silently wrap around.
+5. Save the incremented `last_seq`.
 6. Concatenate prefix (12 chars) + sequence (3 chars) = 15-character final
    hostname (matches the Windows NetBIOS limit). Write it to
    `requests.generated_name`.
