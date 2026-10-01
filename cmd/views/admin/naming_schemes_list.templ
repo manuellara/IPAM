@@ -1,0 +1,52 @@
+package admin
+
+import (
+	"fmt"
+
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/middleware"
+)
+
+type NamingSchemeRow struct {
+	ID         int64
+	Name       string
+	NamingMode string
+}
+
+type NamingSchemeListData struct {
+	Rows []NamingSchemeRow
+}
+
+templ NamingSchemeListPage(principal middleware.Principal, data NamingSchemeListData) {
+	@shared.Boilerplate("IPAM - Naming Schemes") {
+		@shared.Layout(shared.Sidebar(principal), NamingSchemeListMain(data))
+	}
+}
+
+templ NamingSchemeListMain(data NamingSchemeListData) {
+	<div class="container">
+		<header style="margin-bottom: 1.5rem;">
+			<h1 style="margin-bottom: 0;">Naming Schemes</h1>
+			<p style="margin-top: 0; opacity: 0.72;">Manage token values for each naming scheme.</p>
+		</header>
+		<table>
+			<thead>
+				<tr><th>Name</th><th>Mode</th><th></th></tr>
+			</thead>
+			<tbody>
+				for _, row := range data.Rows {
+					<tr>
+						<td>{ row.Name }</td>
+						<td>{ row.NamingMode }</td>
+						<td>
+							<a href={ templ.URL(fmt.Sprintf("/admin/naming-schemes/%d", row.ID)) }>Manage tokens</a>
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		if len(data.Rows) == 0 {
+			<p style="opacity: 0.72; text-align: center; margin-top: 2rem;">No naming schemes available.</p>
+		}
+	</div>
+}

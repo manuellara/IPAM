@@ -22,6 +22,8 @@ type CreateNamingSchemeTokenValueParams struct {
 	Label    string `json:"label"`
 }
 
+// UPPER(?) on code -- see queries.instructions.md's
+// "Reference: naming scheme queries (IPAM-16/17)" section.
 func (q *Queries) CreateNamingSchemeTokenValue(ctx context.Context, arg CreateNamingSchemeTokenValueParams) (NamingSchemeTokenValue, error) {
 	row := q.db.QueryRowContext(ctx, createNamingSchemeTokenValue,
 		arg.SchemeID,
@@ -69,6 +71,55 @@ func (q *Queries) CreateSiteEnvSubnetMap(ctx context.Context, arg CreateSiteEnvS
 		&i.NamingSchemeID,
 		&i.SubnetID,
 		&i.Active,
+	)
+	return i, err
+}
+
+const deactivateNamingSchemeTokenValue = `-- name: DeactivateNamingSchemeTokenValue :exec
+UPDATE naming_scheme_token_values
+SET active = 0
+WHERE id = ?1 AND scheme_id = ?2
+`
+
+type DeactivateNamingSchemeTokenValueParams struct {
+	ID       int64 `json:"id"`
+	SchemeID int64 `json:"scheme_id"`
+}
+
+// Deactivate, never delete -- a request can still reference an inactive
+// code's historical value. Scoped by scheme_id too, same
+// belt-and-suspenders pattern as DeleteSubnetReservedIP.
+func (q *Queries) DeactivateNamingSchemeTokenValue(ctx context.Context, arg DeactivateNamingSchemeTokenValueParams) error {
+	_, err := q.db.ExecContext(ctx, deactivateNamingSchemeTokenValue, arg.ID, arg.SchemeID)
+	return err
+}
+
+const getNamingScheme = `-- name: GetNamingScheme :one
+SELECT id, name, naming_mode, template, token_length, seq_length, total_length
+FROM naming_schemes WHERE id = ?1
+`
+
+type GetNamingSchemeRow struct {
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	NamingMode  string  `json:"naming_mode"`
+	Template    *string `json:"template"`
+	TokenLength int64   `json:"token_length"`
+	SeqLength   int64   `json:"seq_length"`
+	TotalLength int64   `json:"total_length"`
+}
+
+func (q *Queries) GetNamingScheme(ctx context.Context, id int64) (GetNamingSchemeRow, error) {
+	row := q.db.QueryRowContext(ctx, getNamingScheme, id)
+	var i GetNamingSchemeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.NamingMode,
+		&i.Template,
+		&i.TokenLength,
+		&i.SeqLength,
+		&i.TotalLength,
 	)
 	return i, err
 }
@@ -134,14 +185,62 @@ func (q *Queries) ListActiveSiteEnvTokenValues(ctx context.Context) ([]ListActiv
 	return items, nil
 }
 
+const listNamingSchemeTokenValues = `-- name: ListNamingSchemeTokenValues :many
+SELECT id, token, code, label, active
+FROM naming_scheme_token_values
+WHERE scheme_id = ?1
+ORDER BY token, code
+`
+
+type ListNamingSchemeTokenValuesRow struct {
+	ID     int64  `json:"id"`
+	Token  string `json:"token"`
+	Code   string `json:"code"`
+	Label  string `json:"label"`
+	Active int64  `json:"active"`
+}
+
+// ORDER BY token, code -- no lexicographic-sort trap here (unlike
+// ip_address/reserved-ips): code is a fixed-length, non-numeric 3-char
+// abbreviation, so plain string ordering is correct, not just convenient.
+func (q *Queries) ListNamingSchemeTokenValues(ctx context.Context, schemeID int64) ([]ListNamingSchemeTokenValuesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listNamingSchemeTokenValues, schemeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListNamingSchemeTokenValuesRow{}
+	for rows.Next() {
+		var i ListNamingSchemeTokenValuesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Token,
+			&i.Code,
+			&i.Label,
+			&i.Active,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNamingSchemes = `-- name: ListNamingSchemes :many
-SELECT id, name, naming_mode FROM naming_schemes ORDER BY name
+SELECT id, name, naming_mode, template FROM naming_schemes ORDER BY id
 `
 
 type ListNamingSchemesRow struct {
-	ID         int64  `json:"id"`
-	Name       string `json:"name"`
-	NamingMode string `json:"naming_mode"`
+	ID         int64   `json:"id"`
+	Name       string  `json:"name"`
+	NamingMode string  `json:"naming_mode"`
+	Template   *string `json:"template"`
 }
 
 func (q *Queries) ListNamingSchemes(ctx context.Context) ([]ListNamingSchemesRow, error) {
@@ -153,7 +252,12 @@ func (q *Queries) ListNamingSchemes(ctx context.Context) ([]ListNamingSchemesRow
 	items := []ListNamingSchemesRow{}
 	for rows.Next() {
 		var i ListNamingSchemesRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.NamingMode); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.NamingMode,
+			&i.Template,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

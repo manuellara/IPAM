@@ -509,6 +509,37 @@ repeatedly failing their login on purpose).
   edit action, unlike managing reservations, which legitimately is a
   configuration action and stays on the edit form.
 
+## Naming scheme token value admin UI (Cycle 4, IPAM-18)
+
+- **Token values only — no scheme-creation UI.** The 4 schemes (Server,
+  Network Device, VM, F5 Virtual Server) are fixed by the seed migration.
+  `/admin/naming-schemes` and `/admin/naming-schemes/{id}` manage
+  site/env/app/role token *values* on those existing schemes, not the
+  schemes themselves. Don't build a "new scheme" form for v1.
+- **Own page, not a FRAGMENT** — `/admin/naming-schemes/{id}` has the
+  token tables and the add-token form inline, same own-page pattern as
+  `/admin/subnets/{id}/reserved-ips` (IPAM-39). An earlier draft of
+  `routes.md` had a separate `/tokens/new` page with a FRAGMENT POST
+  response; that predated the IPAM-39 "default to a full page for a
+  low-frequency admin sub-list" convention and was corrected to match it
+  before IPAM-18 was built.
+- **Deactivate, never delete.** `POST
+  /admin/naming-schemes/{id}/tokens/{tokenID}/deactivate` sets `active =
+  0`; there is no delete path. A historical request can still reference
+  an inactive code's value, same reasoning as `subnets.active` for
+  soft-retiring a subnet.
+- **Code casing and length are both enforced, at different layers** —
+  length via `internal/naming.ValidateTokenCode` (re-renders the form
+  inline on failure) plus the DB trigger as a backstop; casing via
+  `UPPER(?)` in `CreateNamingSchemeTokenValue`'s insert, a silent
+  normalize, not a rejection. Don't add an uppercase check to
+  `ValidateTokenCode` — that function is length-only by design.
+- **Manual-mode schemes (F5 Virtual Server) still get all 4 token
+  types in the UI** — app/role values are optional for them (their
+  requests never reference app_code/role_code), but the add-token form
+  doesn't hide or disable app/role for manual-mode schemes. The detail
+  page shows an explanatory banner instead.
+
 ## Things Copilot should NOT suggest
 
 - Don't suggest `modernc.org/sqlite`, `bcrypt`, or reintroducing a subnet/IP
@@ -558,6 +589,16 @@ repeatedly failing their login on purpose).
 - Don't make `app_code`/`role_code` unconditionally required on
   `requests` — they're required only for `generated`-mode schemes
   (enforced by trigger, not a plain `NOT NULL`).
+- Don't build a "create new naming scheme" admin form — the 4 schemes
+  are fixed by the seed migration; IPAM-18 only manages token values on
+  them.
+- Don't delete a `naming_scheme_token_values` row from the admin UI —
+  deactivate only (`active = 0`); a historical request may still
+  reference it.
+- Don't format `naming_sequences.last_seq` before incrementing it —
+  increment first, then format. `last_seq` starts at `0` and that value
+  is never itself issued as a code; the first allocation under a prefix
+  is `"001"`, not `"000"`.
 - Don't assume `site_env_subnet_map` has one row per site+env — it's
   scoped per `naming_scheme_id` too; a site+env can map to different
   subnets for different schemes.

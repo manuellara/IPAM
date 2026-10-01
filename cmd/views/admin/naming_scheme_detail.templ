@@ -1,0 +1,123 @@
+package admin
+
+import (
+	"fmt"
+
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/middleware"
+)
+
+type TokenValueRow struct {
+	ID     int64
+	Code   string
+	Label  string
+	Active bool
+}
+
+type NamingSchemeDetailData struct {
+	SchemeID   int64
+	SchemeName string
+	NamingMode string // "generated" or "manual"
+	Template   string // "" for manual-mode schemes
+
+	SiteValues []TokenValueRow
+	EnvValues  []TokenValueRow
+	AppValues  []TokenValueRow
+	RoleValues []TokenValueRow
+
+	FormError string
+}
+
+templ NamingSchemeDetailPage(principal middleware.Principal, data NamingSchemeDetailData) {
+	@shared.Boilerplate("IPAM - " + data.SchemeName) {
+		@shared.Layout(shared.Sidebar(principal), NamingSchemeDetailMain(data))
+	}
+}
+
+templ NamingSchemeDetailMain(data NamingSchemeDetailData) {
+	<div class="container">
+		<header style="margin-bottom: 1.5rem;">
+			<h1 style="margin-bottom: 0;">{ data.SchemeName }</h1>
+			<p style="margin-top: 0.5rem; opacity: 0.72;">
+				Mode: <code>{ data.NamingMode }</code>
+				if data.Template != "" {
+					<span> · Template: <code>{ data.Template }</code></span>
+				}
+			</p>
+			<a href="/admin/naming-schemes">&larr; Back to naming schemes</a>
+		</header>
+		if data.NamingMode == "manual" {
+			<div role="alert" data-variant="warning" style="margin-bottom: 1rem;">
+				This is a manual-mode scheme. App/role token values are optional here --
+				requests using this scheme provide a free-text name directly and never
+				reference app/role codes.
+			</div>
+		}
+		if data.FormError != "" {
+			<div class="error mb-4" role="alert" data-variant="error" style="margin-bottom: 1rem;">
+				<strong>Error!</strong> { data.FormError }
+			</div>
+		}
+		<section style="max-width: 42rem; margin: 0 auto 2rem;">
+			<form method="POST" action={ templ.URL(fmt.Sprintf("/admin/naming-schemes/%d/tokens", data.SchemeID)) } style="display: block;">
+				<fieldset style="border: 1px solid var(--border); border-radius: 0.5rem; padding: 1.25rem 1.25rem 1rem;">
+					<legend style="padding: 0 0.5rem; font-weight: 600;">Add token value</legend>
+					<label for="token" style="display: block; margin-top: 0.5rem; margin-bottom: 0.35rem; font-weight: 600;">Token</label>
+					<select id="token" name="token" required style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;">
+						<option value="site">site</option>
+						<option value="env">env</option>
+						<option value="app">app</option>
+						<option value="role">role</option>
+					</select>
+					<label for="code" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Code</label>
+					<input type="text" id="code" name="code" required placeholder="NYC" style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+					<label for="label" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Label</label>
+					<input type="text" id="label" name="label" required placeholder="New York" style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+					<button type="submit" style="display: block; margin-top: 0.5rem;">Add token</button>
+				</fieldset>
+			</form>
+		</section>
+		@tokenValueTable(data.SchemeID, "Site", data.SiteValues)
+		@tokenValueTable(data.SchemeID, "Env", data.EnvValues)
+		@tokenValueTable(data.SchemeID, "App", data.AppValues)
+		@tokenValueTable(data.SchemeID, "Role", data.RoleValues)
+	</div>
+}
+
+templ tokenValueTable(schemeID int64, title string, rows []TokenValueRow) {
+	<section style="margin-bottom: 2rem;">
+		<h2>{ title }</h2>
+		<div style="overflow-x: auto;">
+			<table>
+				<thead>
+					<tr><th>Code</th><th>Label</th><th>Status</th><th></th></tr>
+				</thead>
+				<tbody>
+					for _, row := range rows {
+						<tr>
+							<td><code>{ row.Code }</code></td>
+							<td>{ row.Label }</td>
+							<td>
+								if row.Active {
+									<span class="badge">Active</span>
+								} else {
+									<span class="badge badge-muted">Inactive</span>
+								}
+							</td>
+							<td>
+								if row.Active {
+									<form method="POST" action={ templ.URL(fmt.Sprintf("/admin/naming-schemes/%d/tokens/%d/deactivate", schemeID, row.ID)) }>
+										<button type="submit">Deactivate</button>
+									</form>
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		if len(rows) == 0 {
+			<p style="opacity: 0.72; text-align: center; margin-top: 1rem;">No { title } token values yet.</p>
+		}
+	</section>
+}

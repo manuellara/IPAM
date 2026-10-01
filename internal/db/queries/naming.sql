@@ -1,10 +1,33 @@
 -- name: ListNamingSchemes :many
-SELECT id, name, naming_mode FROM naming_schemes ORDER BY name;
+SELECT id, name, naming_mode, template FROM naming_schemes ORDER BY id;
+
+-- name: GetNamingScheme :one
+SELECT id, name, naming_mode, template, token_length, seq_length, total_length
+FROM naming_schemes WHERE id = sqlc.arg(id);
+
+-- name: ListNamingSchemeTokenValues :many
+-- ORDER BY token, code -- no lexicographic-sort trap here (unlike
+-- ip_address/reserved-ips): code is a fixed-length, non-numeric 3-char
+-- abbreviation, so plain string ordering is correct, not just convenient.
+SELECT id, token, code, label, active
+FROM naming_scheme_token_values
+WHERE scheme_id = sqlc.arg(scheme_id)
+ORDER BY token, code;
 
 -- name: CreateNamingSchemeTokenValue :one
+-- UPPER(?) on code -- see queries.instructions.md's
+-- "Reference: naming scheme queries (IPAM-16/17)" section.
 INSERT INTO naming_scheme_token_values (scheme_id, token, code, label)
 VALUES (sqlc.arg(scheme_id), sqlc.arg(token), UPPER(sqlc.arg(code)), sqlc.arg(label))
 RETURNING *;
+
+-- name: DeactivateNamingSchemeTokenValue :exec
+-- Deactivate, never delete -- a request can still reference an inactive
+-- code's historical value. Scoped by scheme_id too, same
+-- belt-and-suspenders pattern as DeleteSubnetReservedIP.
+UPDATE naming_scheme_token_values
+SET active = 0
+WHERE id = sqlc.arg(id) AND scheme_id = sqlc.arg(scheme_id);
 
 -- name: ListActiveSiteEnvTokenValues :many
 -- Load active site and env tokens for client-side filtering by scheme and token.
