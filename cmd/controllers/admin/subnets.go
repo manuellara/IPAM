@@ -37,17 +37,19 @@ func (c *SubnetsController) RegisterSubnetsRoutes(mux *http.ServeMux, mw middlew
 // list handles the rendering of the admin subnet list page. It retrieves the list of subnets from the database,
 // computes their utilization, and passes the data to the view for rendering. Unauthorized users receive a 401 response.
 func (c *SubnetsController) list(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	ctx := r.Context()
 	principal, ok := middleware.GetAuthFromContext(ctx)
 	if !ok {
-		middleware.GetLoggerFromContext(ctx).Error("unauthorized access to subnet list")
+		logger.Error("unauthorized access to subnet list")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	rows, err := c.store.ListSubnetsWithCounts(ctx)
 	if err != nil {
-		middleware.GetLoggerFromContext(ctx).Error("failed to list subnets", "error", err)
+		logger.Error("failed to list subnets", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -56,7 +58,7 @@ func (c *SubnetsController) list(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		prefix, err := subnets.ParseCIDR(row.Cidr)
 		if err != nil {
-			middleware.GetLoggerFromContext(ctx).Error("subnet has invalid stored CIDR", "id", row.ID, "cidr", row.Cidr, "error", err)
+			logger.Error("subnet has invalid stored CIDR", "id", row.ID, "cidr", row.Cidr, "error", err)
 			continue
 		}
 
@@ -82,9 +84,11 @@ func (c *SubnetsController) list(w http.ResponseWriter, r *http.Request) {
 // newForm handles the rendering of the new subnet form page. It retrieves the authenticated principal from the context
 // and passes it to the view for rendering. Unauthorized users receive a 401 response.
 func (c *SubnetsController) newForm(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, ok := middleware.GetAuthFromContext(r.Context())
 	if !ok {
-		middleware.GetLoggerFromContext(r.Context()).Error("unauthorized access to new subnet form")
+		logger.Error("unauthorized access to new subnet form")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -94,30 +98,32 @@ func (c *SubnetsController) newForm(w http.ResponseWriter, r *http.Request) {
 // editForm handles the rendering of the edit subnet form page. It retrieves the authenticated principal from the context
 // and the subnet details from the store, then passes them to the view for rendering. Unauthorized users receive a 401 response.
 func (c *SubnetsController) editForm(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, ok := middleware.GetAuthFromContext(r.Context())
 	if !ok {
-		middleware.GetLoggerFromContext(r.Context()).Error("unauthorized access to edit subnet form")
+		logger.Error("unauthorized access to edit subnet form")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("invalid subnet id for edit", "id", r.PathValue("id"), "error", err)
+		logger.Warn("invalid subnet id for edit", "id", r.PathValue("id"), "error", err)
 		http.Error(w, "invalid subnet id", http.StatusBadRequest)
 		return
 	}
 
 	subnet, err := c.store.GetSubnet(r.Context(), id)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to load subnet", "id", id, "error", err)
+		logger.Error("failed to load subnet", "id", id, "error", err)
 		http.Error(w, "subnet not found", http.StatusNotFound)
 		return
 	}
 
 	allocCount, err := c.store.CountActiveAllocationsForSubnet(r.Context(), id)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to count allocations", "id", id, "error", err)
+		logger.Error("failed to count allocations", "id", id, "error", err)
 	}
 
 	label := ""
@@ -138,12 +144,14 @@ func (c *SubnetsController) editForm(w http.ResponseWriter, r *http.Request) {
 // create handles the creation of a new subnet. It validates the input, checks for conflicts with existing subnets,
 // and inserts the new subnet into the store. On success, it redirects to the subnets list page; on failure, it renders the form with an error.
 func (c *SubnetsController) create(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	cidr := r.FormValue("cidr")
 	label := r.FormValue("label")
 
 	existing, err := c.store.ListActiveSubnets(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to list active subnets", "error", err)
+		logger.Error("failed to list active subnets", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -155,7 +163,7 @@ func (c *SubnetsController) create(w http.ResponseWriter, r *http.Request) {
 
 	prefix, err := subnets.ValidateSubnet(cidr, existingSubnets, nil)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("subnet create validation failed", "cidr", cidr, "error", err)
+		logger.Warn("subnet create validation failed", "cidr", cidr, "error", err)
 		c.renderNewFormWithError(w, r, cidr, label, err.Error())
 		return
 	}
@@ -168,7 +176,7 @@ func (c *SubnetsController) create(w http.ResponseWriter, r *http.Request) {
 		Cidr:  prefix.String(),
 		Label: labelPtr,
 	}); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to create subnet", "cidr", prefix.String(), "error", err)
+		logger.Error("failed to create subnet", "cidr", prefix.String(), "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -179,9 +187,11 @@ func (c *SubnetsController) create(w http.ResponseWriter, r *http.Request) {
 // update handles the updating of an existing subnet. It validates the input, checks for conflicts with other subnets,
 // and updates the subnet in the store. On success, it redirects to the subnets list page; on failure, it renders the form with an error.
 func (c *SubnetsController) update(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("invalid subnet id for update", "id", r.PathValue("id"), "error", err)
+		logger.Warn("invalid subnet id for update", "id", r.PathValue("id"), "error", err)
 		http.Error(w, "invalid subnet id", http.StatusBadRequest)
 		return
 	}
@@ -192,7 +202,7 @@ func (c *SubnetsController) update(w http.ResponseWriter, r *http.Request) {
 
 	existing, err := c.store.ListActiveSubnets(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to list active subnets", "error", err)
+		logger.Error("failed to list active subnets", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -204,7 +214,7 @@ func (c *SubnetsController) update(w http.ResponseWriter, r *http.Request) {
 
 	prefix, err := subnets.ValidateSubnet(cidr, existingSubnets, &id)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("subnet update validation failed", "id", id, "cidr", cidr, "error", err)
+		logger.Warn("subnet update validation failed", "id", id, "cidr", cidr, "error", err)
 		c.renderEditFormWithError(w, r, id, cidr, label, active, err.Error())
 		return
 	}
@@ -223,7 +233,7 @@ func (c *SubnetsController) update(w http.ResponseWriter, r *http.Request) {
 		Label:  labelPtr,
 		Active: activeInt,
 	}); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to update subnet", "id", id, "error", err)
+		logger.Error("failed to update subnet", "id", id, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -247,11 +257,13 @@ func (c *SubnetsController) renderNewFormWithError(w http.ResponseWriter, r *htt
 // renderEditForm renders the edit subnet form with the provided data. It retrieves the authenticated principal from the context
 // and passes it along with the form data to the view for rendering.
 func (c *SubnetsController) renderEditFormWithError(w http.ResponseWriter, r *http.Request, id int64, cidr, label string, active bool, errMsg string) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, _ := middleware.GetAuthFromContext(r.Context())
 
 	allocCount, err := c.store.CountActiveAllocationsForSubnet(r.Context(), id)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to count allocations", "id", id, "error", err)
+		logger.Error("failed to count allocations", "id", id, "error", err)
 	}
 
 	c.renderEditForm(w, r, principal, admin.SubnetFormData{

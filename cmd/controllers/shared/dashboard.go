@@ -30,9 +30,11 @@ func (c *DashboardController) RegisterDashboardRoutes(mux *http.ServeMux, mw mid
 
 // dashboard handles the HTTP request for the shared dashboard page.
 func (c *DashboardController) dashboard(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	auth, ok := middleware.GetAuthFromContext(r.Context())
 	if !ok {
-		middleware.GetLoggerFromContext(r.Context()).Error("Unauthorized access to shared dashboard")
+		logger.Error("Unauthorized access to shared dashboard")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}

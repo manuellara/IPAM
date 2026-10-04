@@ -1,0 +1,116 @@
+package requester
+
+import (
+	"fmt"
+
+	"github.com/manuellara/ipam/cmd/views/shared"
+	"github.com/manuellara/ipam/internal/middleware"
+)
+
+type SchemeOption struct {
+	ID   int64
+	Name string
+}
+
+type TokenOption struct {
+	Code  string
+	Label string
+}
+
+type RequestFormFields struct {
+	SchemeID    int64
+	NamingMode  string // "generated" or "manual"
+	SiteOptions []TokenOption
+	EnvOptions  []TokenOption
+	AppOptions  []TokenOption // only rendered when NamingMode == "generated"
+	RoleOptions []TokenOption // only rendered when NamingMode == "generated"
+}
+
+type RequestFormData struct {
+	Schemes   []SchemeOption
+	Fields    RequestFormFields
+	FormError string
+}
+
+templ RequestFormPage(principal middleware.Principal, data RequestFormData) {
+	@shared.Boilerplate("IPAM - New Request") {
+		@shared.Layout(shared.Sidebar(principal), RequestFormMain(data))
+	}
+}
+
+templ RequestFormMain(data RequestFormData) {
+	<div class="container">
+		<header style="margin-bottom: 1.5rem;">
+			<h1 style="margin-bottom: 0;">New Request</h1>
+			<p style="margin-top: 0.5rem; opacity: 0.72;">Choose a naming scheme and provide the details for the requested asset.</p>
+		</header>
+		if data.FormError != "" {
+			<div class="error mb-4" role="alert" data-variant="error" style="margin-bottom: 1rem;">
+				<strong>Error!</strong> { data.FormError }
+			</div>
+		}
+		<section style="max-width: 42rem; margin: 0 auto;">
+			<form method="POST" action="/requests" style="display: block;">
+				<fieldset style="border: 1px solid rgba(17, 24, 39, 0.16); border-radius: 0.75rem; padding: 1.25rem 1.25rem 1rem; background: rgba(255, 255, 255, 0.02);">
+					<legend style="padding: 0 0.5rem; font-weight: 600;">Request details</legend>
+					<label for="scheme-id" style="display: block; margin-top: 0.5rem; margin-bottom: 0.35rem; font-weight: 600;">Naming Scheme</label>
+					<select
+						id="scheme-id"
+						name="scheme_id"
+						hx-get="/requests/new/fields"
+						hx-trigger="change"
+						hx-target="#scheme-fields"
+						hx-include="this"
+						required
+						style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"
+					>
+						for _, s := range data.Schemes {
+							<option value={ fmt.Sprintf("%d", s.ID) } selected?={ s.ID == data.Fields.SchemeID }>{ s.Name }</option>
+						}
+					</select>
+					<div id="scheme-fields">
+						@SchemeFields(data.Fields)
+					</div>
+					<button type="submit" style="display: block; margin-top: 0.5rem;">Submit Request</button>
+				</fieldset>
+			</form>
+		</section>
+	</div>
+}
+
+// SchemeFields is the fragment swapped in by GET /requests/new/fields --
+// also reused for the full page's initial render so the two code paths
+// never drift (IPAM-61's "no leftover fields from the previous
+// selection" acceptance criteria is satisfied by swapping the whole
+// block, not patching individual fields).
+templ SchemeFields(f RequestFormFields) {
+	<label for="site-code" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Site</label>
+	<select id="site-code" name="site_code" required style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;">
+			for _, o := range f.SiteOptions {
+				<option value={ o.Code }>{ o.Label }</option>
+			}
+		</select>
+	<label for="env-code" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Env</label>
+	<select id="env-code" name="env_code" required style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;">
+			for _, o := range f.EnvOptions {
+				<option value={ o.Code }>{ o.Label }</option>
+			}
+		</select>
+	if f.NamingMode == "generated" {
+		<label for="app-code" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">App</label>
+		<select id="app-code" name="app_code" required style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;">
+				for _, o := range f.AppOptions {
+					<option value={ o.Code }>{ o.Label }</option>
+				}
+			</select>
+		<label for="role-code" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Role</label>
+		<select id="role-code" name="role_code" required style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;">
+				for _, o := range f.RoleOptions {
+					<option value={ o.Code }>{ o.Label }</option>
+				}
+			</select>
+	} else {
+		<label for="manual-name" style="display: block; margin-bottom: 0.35rem; font-weight: 600;">Virtual Server Name</label>
+		<input type="text" id="manual-name" name="manual_name" required style="width: 100%; box-sizing: border-box; margin-bottom: 1rem;"/>
+	}
+}

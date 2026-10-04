@@ -9,6 +9,7 @@ import (
 
 	"github.com/manuellara/ipam/cmd/controllers/admin"
 	"github.com/manuellara/ipam/cmd/controllers/shared"
+	"github.com/manuellara/ipam/cmd/controllers/requester"
 	"github.com/manuellara/ipam/internal/auth"
 	"github.com/manuellara/ipam/internal/config"
 	"github.com/manuellara/ipam/internal/database"
@@ -75,6 +76,7 @@ func main() {
 	reservedIPController := admin.NewReservedIPController(sqlcService, databaseService.DB(), sessionManager)
 	allocationsExportController := admin.NewAllocationsExportController(sqlcService, sessionManager)
 	namingSchemeController := admin.NewNamingSchemeController(sqlcService, sessionManager)
+	requestController := requester.NewRequestController(sqlcService, sessionManager)
 
 	// Initialize the HTTP request multiplexer
 	mux := http.NewServeMux()
@@ -95,6 +97,7 @@ func main() {
 	reservedIPController.RegisterReservedIPRoutes(mux, authenticatedMiddleware)
 	allocationsExportController.RegisterAllocationsExportRoutes(mux, authenticatedMiddleware)
 	namingSchemeController.RegisterNamingSchemeRoutes(mux, authenticatedMiddleware)
+	requestController.RegisterRequestRoutes(mux, authenticatedMiddleware)
 
 	// Run the HTTP server with session management
 	if err := http.ListenAndServe(":8080", middleware.RecoverMiddleware(mux)); err != nil {

@@ -29,6 +29,8 @@ func (c *AllocationsExportController) RegisterAllocationsExportRoutes(mux *http.
 
 // export handles the HTTP request to export IP allocations as a CSV file.
 func (c *AllocationsExportController) export(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	type row struct {
 		SubnetCIDR  string
 		IPAddress   string
@@ -43,13 +45,13 @@ func (c *AllocationsExportController) export(w http.ResponseWriter, r *http.Requ
 	if subnetIDStr := r.URL.Query().Get("subnet_id"); subnetIDStr != "" {
 		subnetID, err := strconv.ParseInt(subnetIDStr, 10, 64)
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Warn("invalid subnet id for allocations export", "subnet_id", subnetIDStr, "error", err)
+			logger.Warn("invalid subnet id for allocations export", "subnet_id", subnetIDStr, "error", err)
 			http.Error(w, "invalid subnet_id", http.StatusBadRequest)
 			return
 		}
 		dbRows, err := c.store.ListActiveAllocationsForSubnetExport(r.Context(), subnetID)
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("failed to load subnet allocations for export", "subnet_id", subnetID, "error", err)
+			logger.Error("failed to load subnet allocations for export", "subnet_id", subnetID, "error", err)
 			http.Error(w, "failed to load allocations", http.StatusInternalServerError)
 			return
 		}
@@ -66,7 +68,7 @@ func (c *AllocationsExportController) export(w http.ResponseWriter, r *http.Requ
 	} else {
 		dbRows, err := c.store.ListActiveAllocationsForExport(r.Context())
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("failed to load allocations for export", "error", err)
+			logger.Error("failed to load allocations for export", "error", err)
 			http.Error(w, "failed to load allocations", http.StatusInternalServerError)
 			return
 		}
@@ -88,7 +90,7 @@ func (c *AllocationsExportController) export(w http.ResponseWriter, r *http.Requ
 	cw := csv.NewWriter(w)
 
 	if err := cw.Write([]string{"Subnet", "IP Address", "Hostname", "Source", "Requester", "Allocated At", "Status"}); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to write allocations export header", "error", err)
+		logger.Error("failed to write allocations export header", "error", err)
 		return
 	}
 	for _, row := range rows {
@@ -111,12 +113,12 @@ func (c *AllocationsExportController) export(w http.ResponseWriter, r *http.Requ
 			row.AllocatedAt,
 			"Active", // constant for now -- only active rows are ever exported (see design decision: no include_released toggle in v1)
 		}); err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("failed to write allocations export row", "ip_address", row.IPAddress, "error", err)
+			logger.Error("failed to write allocations export row", "ip_address", row.IPAddress, "error", err)
 			return
 		}
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to flush allocations export", "error", err)
+		logger.Error("failed to flush allocations export", "error", err)
 	}
 }

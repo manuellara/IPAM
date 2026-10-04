@@ -67,13 +67,15 @@ func (c *LoginController) login(w http.ResponseWriter, r *http.Request) {
 
 // renderLoginPage renders the login page with the provided error message and configuration flags.
 func (c *LoginController) renderLoginPage(w http.ResponseWriter, r *http.Request, errMsg string) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	oidcCfg, err := c.store.GetOIDCConfig(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc config lookup failed", "error", err)
+		logger.Error("oidc config lookup failed", "error", err)
 	}
 	ldapCfg, err := c.store.GetLDAPConfig(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("ldap config lookup failed", "error", err)
+		logger.Error("ldap config lookup failed", "error", err)
 	}
 
 	shared.LoginPage(errMsg, auth.ConfigEnabled(oidcCfg.Enabled), auth.ConfigEnabled(ldapCfg.Enabled)).Render(r.Context(), w)
@@ -102,38 +104,40 @@ func strPtrOrNil(s string) *string {
 
 // handleLocalLoginPost handles the login process for the local administrator account. It verifies the submitted password, manages the session, and logs audit events.
 func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	password := r.FormValue("password")
 	const identifier = "administrator"
 
 	if err := auth.CheckLoginLockout(r.Context(), c.store, identifier, "local"); err != nil {
 		var locked *auth.ErrLoginLocked
 		if errors.As(err, &locked) {
-			middleware.GetLoggerFromContext(r.Context()).Warn("local login locked out", "retry_after", locked.RetryAfter, "error", err)
+			logger.Warn("local login locked out", "retry_after", locked.RetryAfter, "error", err)
 			c.auditLogin(r.Context(), nil, auditActionLocalLoginFailure, "locked out")
 			c.renderLoginPage(w, r, fmt.Sprintf("Too many failed attempts. Try again in %d seconds.", int(locked.RetryAfter.Seconds())+1))
 			return
 		}
-		middleware.GetLoggerFromContext(r.Context()).Error("lockout check failed", "error", err)
+		logger.Error("lockout check failed", "error", err)
 	}
 
 	admin, err := c.store.GetLocalAdminUser(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("local admin lookup failed during login", "error", err)
+		logger.Error("local admin lookup failed during login", "error", err)
 		err = c.store.CreateAuditLog(r.Context(), db.CreateAuditLogParams{
 			Action: auditActionLocalLoginFailure,
 			Detail: strPtr("lookup failed"),
 		})
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("audit log creation failed", "action", auditActionLocalLoginFailure, "error", err)
+			logger.Error("audit log creation failed", "action", auditActionLocalLoginFailure, "error", err)
 		}
 		c.renderLoginPage(w, r, "Invalid username or password.")
 		return
 	}
 
 	if admin.PasswordHash == nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("local admin login failed: no password hash", "user_id", admin.ID)
+		logger.Warn("local admin login failed: no password hash", "user_id", admin.ID)
 		if err := auth.RecordLoginFailure(r.Context(), c.store, identifier, "local"); err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("failed to record login failure", "error", err)
+			logger.Error("failed to record login failure", "error", err)
 		}
 		c.auditLogin(r.Context(), &admin.ID, auditActionLocalLoginFailure, "no password set")
 		c.renderLoginPage(w, r, "Invalid username or password.")
@@ -143,12 +147,12 @@ func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Re
 	match, err := argon2id.ComparePasswordAndHash(password, *admin.PasswordHash)
 	if err != nil || !match {
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("local admin password verification failed", "user_id", admin.ID, "error", err)
+			logger.Error("local admin password verification failed", "user_id", admin.ID, "error", err)
 		} else {
-			middleware.GetLoggerFromContext(r.Context()).Warn("local admin password mismatch", "user_id", admin.ID)
+			logger.Warn("local admin password mismatch", "user_id", admin.ID)
 		}
 		if err := auth.RecordLoginFailure(r.Context(), c.store, identifier, "local"); err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("failed to record login failure", "error", err)
+			logger.Error("failed to record login failure", "error", err)
 		}
 		c.auditLogin(r.Context(), &admin.ID, auditActionLocalLoginFailure, "password mismatch")
 		c.renderLoginPage(w, r, "Invalid username or password.")
@@ -156,18 +160,18 @@ func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Re
 	}
 
 	if err := auth.ResetLoginAttempts(r.Context(), c.store, identifier, "local"); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to reset local login attempts", "error", err)
+		logger.Error("failed to reset local login attempts", "error", err)
 	}
 
 	if err := c.sessionManager.RenewToken(r.Context()); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("session renew failed", "error", err)
+		logger.Error("session renew failed", "error", err)
 		c.renderLoginPage(w, r, "Something went wrong. Please try again.")
 		return
 	}
 
 	roleNames, err := c.store.GetUserRoleNames(r.Context(), admin.ID)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to load user roles", "error", err)
+		logger.Error("failed to load user roles", "error", err)
 		c.renderLoginPage(w, r, "Something went wrong. Please try again.")
 		return
 	}
@@ -183,26 +187,28 @@ func (c *LoginController) handleLocalLoginPost(w http.ResponseWriter, r *http.Re
 // via search-then-bind, provisions a user on first successful login, and
 // establishes the normal IPAM session.
 func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
 	if err := auth.CheckLoginLockout(r.Context(), c.store, username, "ldap"); err != nil {
 		var locked *auth.ErrLoginLocked
 		if errors.As(err, &locked) {
-			middleware.GetLoggerFromContext(r.Context()).Warn("ldap login locked out", "retry_after", locked.RetryAfter, "error", err)
+			logger.Warn("ldap login locked out", "retry_after", locked.RetryAfter, "error", err)
 			c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "locked out")
 			c.renderLoginPage(w, r, fmt.Sprintf("Too many failed attempts. Try again in %d seconds.", int(locked.RetryAfter.Seconds())+1))
 			return
 		}
-		middleware.GetLoggerFromContext(r.Context()).Error("lockout check failed", "error", err)
+		logger.Error("lockout check failed", "error", err)
 	}
 
 	cfg, err := c.store.GetLDAPConfig(r.Context())
 	if err != nil || !auth.ConfigEnabled(cfg.Enabled) || cfg.Server == nil || cfg.Port == nil || cfg.BaseDn == nil || cfg.BindDn == nil || cfg.BindPassword == nil || cfg.UserFilter == nil {
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("ldap config lookup failed during login", "error", err)
+			logger.Error("ldap config lookup failed during login", "error", err)
 		} else {
-			middleware.GetLoggerFromContext(r.Context()).Warn("ldap login unavailable: configuration disabled or incomplete")
+			logger.Warn("ldap login unavailable: configuration disabled or incomplete")
 		}
 		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "ldap not configured")
 		c.renderLoginPage(w, r, "LDAP sign-in is not configured.")
@@ -211,9 +217,9 @@ func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Req
 
 	ldapUser, err := auth.AuthenticateLDAP(*cfg.Server, *cfg.Port, *cfg.BaseDn, *cfg.BindDn, *cfg.BindPassword, *cfg.UserFilter, username, password, cfg.CaCert)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("ldap authentication failed", "error", err)
+		logger.Warn("ldap authentication failed", "error", err)
 		if err := auth.RecordLoginFailure(r.Context(), c.store, username, "ldap"); err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("failed to record login failure", "error", err)
+			logger.Error("failed to record login failure", "error", err)
 		}
 		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "authentication failed")
 		c.renderLoginPage(w, r, "Invalid username or password.")
@@ -221,7 +227,7 @@ func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Req
 	}
 
 	if err := auth.ResetLoginAttempts(r.Context(), c.store, username, "ldap"); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("failed to reset login attempts", "error", err)
+		logger.Error("failed to reset login attempts", "error", err)
 	}
 
 	user, err := c.store.GetLDAPUser(r.Context(), &ldapUser.DN)
@@ -248,7 +254,7 @@ func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Req
 		err = txErr
 	}
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("ldap user lookup or provisioning failed", "error", err)
+		logger.Error("ldap user lookup or provisioning failed", "error", err)
 		c.auditLogin(r.Context(), nil, auditActionLDAPLoginFailure, "user provisioning failed")
 		http.Error(w, "Unable to provision LDAP user", http.StatusInternalServerError)
 		return
@@ -256,13 +262,13 @@ func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Req
 
 	roles, err := c.store.GetUserRoleNames(r.Context(), user.ID)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("ldap user role lookup failed", "user_id", user.ID, "error", err)
+		logger.Error("ldap user role lookup failed", "user_id", user.ID, "error", err)
 		c.auditLogin(r.Context(), &user.ID, auditActionLDAPLoginFailure, "role lookup failed")
 		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
 		return
 	}
 	if err := c.sessionManager.RenewToken(r.Context()); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("ldap session renew failed", "user_id", user.ID, "error", err)
+		logger.Error("ldap session renew failed", "user_id", user.ID, "error", err)
 		c.auditLogin(r.Context(), &user.ID, auditActionLDAPLoginFailure, "session renew failed")
 		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
 		return
@@ -274,17 +280,19 @@ func (c *LoginController) handleLDAPLoginPost(w http.ResponseWriter, r *http.Req
 
 // Logout destroys the session.
 func (c *LoginController) logout(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	if userID := c.sessionManager.GetInt64(r.Context(), "userID"); userID != 0 {
 		if err := c.store.CreateAuditLog(r.Context(), db.CreateAuditLogParams{
 			ActorUserID: &userID,
 			Action:      auditActionLogout,
 		}); err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("audit log creation failed", "action", auditActionLogout, "user_id", userID, "error", err)
+			logger.Error("audit log creation failed", "action", auditActionLogout, "user_id", userID, "error", err)
 		}
 	}
 
 	if err := c.sessionManager.Destroy(r.Context()); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("session destroy failed", "error", err)
+		logger.Error("session destroy failed", "error", err)
 	}
 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -301,12 +309,14 @@ func (c *LoginController) redirectAfterLogin(w http.ResponseWriter, r *http.Requ
 
 // oidcLogin starts the authorization-code flow with the configured provider.
 func (c *LoginController) oidcLogin(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	cfg, err := c.store.GetOIDCConfig(r.Context())
 	if err != nil || !auth.ConfigEnabled(cfg.Enabled) || cfg.IssuerUrl == nil || cfg.ClientID == nil || cfg.ClientSecret == nil || cfg.RedirectUrl == nil {
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("oidc config lookup failed during login", "error", err)
+			logger.Error("oidc config lookup failed during login", "error", err)
 		} else {
-			middleware.GetLoggerFromContext(r.Context()).Warn("oidc login unavailable: configuration disabled or incomplete")
+			logger.Warn("oidc login unavailable: configuration disabled or incomplete")
 		}
 		http.Error(w, "OIDC sign-in is not configured", http.StatusNotFound)
 		return
@@ -314,20 +324,20 @@ func (c *LoginController) oidcLogin(w http.ResponseWriter, r *http.Request) {
 
 	oidcClient, err := auth.NewOIDCClient(r.Context(), *cfg.IssuerUrl, *cfg.ClientID, *cfg.ClientSecret, *cfg.RedirectUrl)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc provider discovery failed", "error", err)
+		logger.Error("oidc provider discovery failed", "error", err)
 		http.Error(w, "Unable to connect to the OIDC provider", http.StatusBadGateway)
 		return
 	}
 
 	state, err := auth.RandomOIDCString()
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc state generation failed", "error", err)
+		logger.Error("oidc state generation failed", "error", err)
 		http.Error(w, "Unable to start OIDC sign-in", http.StatusInternalServerError)
 		return
 	}
 	nonce, err := auth.RandomOIDCString()
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc nonce generation failed", "error", err)
+		logger.Error("oidc nonce generation failed", "error", err)
 		http.Error(w, "Unable to start OIDC sign-in", http.StatusInternalServerError)
 		return
 	}
@@ -340,16 +350,18 @@ func (c *LoginController) oidcLogin(w http.ResponseWriter, r *http.Request) {
 // oidcCallback completes the authorization-code flow, provisions the user,
 // and establishes the normal IPAM session.
 func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	expectedState := c.sessionManager.PopString(r.Context(), oidcStateSessionKey)
 	if expectedState == "" || subtle.ConstantTimeCompare([]byte(expectedState), []byte(r.URL.Query().Get("state"))) != 1 {
-		middleware.GetLoggerFromContext(r.Context()).Warn("oidc callback rejected: invalid state")
+		logger.Warn("oidc callback rejected: invalid state")
 		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "invalid state")
 		http.Error(w, "Invalid OIDC state", http.StatusBadRequest)
 		return
 	}
 	nonce := c.sessionManager.PopString(r.Context(), oidcNonceSessionKey)
 	if r.URL.Query().Get("error") != "" {
-		middleware.GetLoggerFromContext(r.Context()).Warn("oidc provider returned an error", "provider_error", r.URL.Query().Get("error"))
+		logger.Warn("oidc provider returned an error", "provider_error", r.URL.Query().Get("error"))
 		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "sign-in cancelled")
 		c.renderLoginPage(w, r, "OIDC sign-in was cancelled.")
 		return
@@ -358,22 +370,22 @@ func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	cfg, err := c.store.GetOIDCConfig(r.Context())
 	if err != nil || !auth.ConfigEnabled(cfg.Enabled) || cfg.IssuerUrl == nil || cfg.ClientID == nil || cfg.ClientSecret == nil || cfg.RedirectUrl == nil {
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Error("oidc config lookup failed during callback", "error", err)
+			logger.Error("oidc config lookup failed during callback", "error", err)
 		} else {
-			middleware.GetLoggerFromContext(r.Context()).Warn("oidc callback unavailable: configuration disabled or incomplete")
+			logger.Warn("oidc callback unavailable: configuration disabled or incomplete")
 		}
 		http.Error(w, "OIDC sign-in is not configured", http.StatusNotFound)
 		return
 	}
 	oidcClient, err := auth.NewOIDCClient(r.Context(), *cfg.IssuerUrl, *cfg.ClientID, *cfg.ClientSecret, *cfg.RedirectUrl)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc provider discovery failed during callback", "error", err)
+		logger.Error("oidc provider discovery failed during callback", "error", err)
 		http.Error(w, "Unable to connect to the OIDC provider", http.StatusBadGateway)
 		return
 	}
 	claims, err := oidcClient.VerifyCode(r.Context(), r.URL.Query().Get("code"), nonce)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("oidc code verification failed", "error", err)
+		logger.Warn("oidc code verification failed", "error", err)
 		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "authentication failed")
 		http.Error(w, "OIDC authentication failed", http.StatusUnauthorized)
 		return
@@ -406,20 +418,20 @@ func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		err = txErr
 	}
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc user lookup or provisioning failed", "error", err)
+		logger.Error("oidc user lookup or provisioning failed", "error", err)
 		c.auditLogin(r.Context(), nil, auditActionOIDCLoginFailure, "provisioning failed")
 		http.Error(w, "Unable to provision OIDC user", http.StatusInternalServerError)
 		return
 	}
 	roles, err := c.store.GetUserRoleNames(r.Context(), user.ID)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc user role lookup failed", "user_id", user.ID, "error", err)
+		logger.Error("oidc user role lookup failed", "user_id", user.ID, "error", err)
 		c.auditLogin(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
 		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
 		return
 	}
 	if err := c.sessionManager.RenewToken(r.Context()); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc session renew failed", "user_id", user.ID, "error", err)
+		logger.Error("oidc session renew failed", "user_id", user.ID, "error", err)
 		c.auditLogin(r.Context(), &user.ID, auditActionOIDCLoginFailure, "unable to establish session")
 		http.Error(w, "Unable to establish session", http.StatusInternalServerError)
 		return
@@ -431,6 +443,8 @@ func (c *LoginController) oidcCallback(w http.ResponseWriter, r *http.Request) {
 
 // auditLogin creates an audit log entry for login-related actions.
 func (c *LoginController) auditLogin(ctx context.Context, userID *int64, action, detail string) {
+	logger := middleware.GetLoggerFromContext(ctx)
+
 	params := db.CreateAuditLogParams{
 		ActorUserID: userID,
 		Action:      action,
@@ -440,6 +454,6 @@ func (c *LoginController) auditLogin(ctx context.Context, userID *int64, action,
 		params.Detail = strPtrOrNil(detail)
 	}
 	if err := c.store.CreateAuditLog(ctx, params); err != nil {
-		middleware.GetLoggerFromContext(ctx).Error("audit log creation failed", "action", action, "error", err)
+		logger.Error("audit log creation failed", "action", action, "error", err)
 	}
 }

@@ -94,6 +94,28 @@ func (q *Queries) DeactivateNamingSchemeTokenValue(ctx context.Context, arg Deac
 	return err
 }
 
+const getActiveSiteEnvSubnetMap = `-- name: GetActiveSiteEnvSubnetMap :one
+SELECT subnet_id FROM site_env_subnet_map
+WHERE site_code = ?1
+    AND env_code = ?2
+    AND naming_scheme_id = ?3
+    AND active = 1
+`
+
+type GetActiveSiteEnvSubnetMapParams struct {
+	SiteCode       string `json:"site_code"`
+	EnvCode        string `json:"env_code"`
+	NamingSchemeID int64  `json:"naming_scheme_id"`
+}
+
+// Request submission requires an active mapping for this scheme/site/env.
+func (q *Queries) GetActiveSiteEnvSubnetMap(ctx context.Context, arg GetActiveSiteEnvSubnetMapParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getActiveSiteEnvSubnetMap, arg.SiteCode, arg.EnvCode, arg.NamingSchemeID)
+	var subnet_id int64
+	err := row.Scan(&subnet_id)
+	return subnet_id, err
+}
+
 const getNamingScheme = `-- name: GetNamingScheme :one
 SELECT id, name, naming_mode, template, token_length, seq_length, total_length
 FROM naming_schemes WHERE id = ?1

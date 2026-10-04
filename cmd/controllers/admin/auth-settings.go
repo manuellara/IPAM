@@ -37,18 +37,20 @@ func (c *AuthSettingsController) RegisterAuthSettingsRoutes(mux *http.ServeMux, 
 
 // authSettings renders the authentication settings page.
 func (c *AuthSettingsController) authSettings(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, _ := middleware.GetAuthFromContext(r.Context())
 
 	oidcConfig, err := c.store.GetOIDCConfig(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc config lookup failed", "error", err)
+		logger.Error("oidc config lookup failed", "error", err)
 		http.Error(w, "Unable to load authentication settings", http.StatusInternalServerError)
 		return
 	}
 
 	ldapConfig, err := c.store.GetLDAPConfig(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("ldap config lookup failed", "error", err)
+		logger.Error("ldap config lookup failed", "error", err)
 		http.Error(w, "Unable to load authentication settings", http.StatusInternalServerError)
 		return
 	}
@@ -58,15 +60,17 @@ func (c *AuthSettingsController) authSettings(w http.ResponseWriter, r *http.Req
 
 // updateOIDC handles the POST request to update the OIDC authentication settings.
 func (c *AuthSettingsController) updateOIDC(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	issuerURL := strings.TrimSpace(r.FormValue("issuer_url"))
 	if checkboxToInt64(r.FormValue("enabled")) != 0 && issuerURL == "" {
-		middleware.GetLoggerFromContext(r.Context()).Warn("oidc settings validation failed", "reason", "issuer URL required when enabled")
+		logger.Warn("oidc settings validation failed", "reason", "issuer URL required when enabled")
 		http.Error(w, "OIDC issuer URL is required when OIDC is enabled", http.StatusBadRequest)
 		return
 	}
 	if issuerURL != "" {
 		if err := validateOIDCIssuer(r.Context(), issuerURL); err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Warn("oidc issuer discovery failed", "issuer_url", issuerURL, "error", err)
+			logger.Warn("oidc issuer discovery failed", "issuer_url", issuerURL, "error", err)
 			http.Error(w, "OIDC issuer URL could not be resolved", http.StatusBadRequest)
 			return
 		}
@@ -74,7 +78,7 @@ func (c *AuthSettingsController) updateOIDC(w http.ResponseWriter, r *http.Reque
 
 	err := c.updateOIDCConfig(r, issuerURL)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("oidc settings update failed", "enabled", checkboxToInt64(r.FormValue("enabled")) != 0, "error", err)
+		logger.Error("oidc settings update failed", "enabled", checkboxToInt64(r.FormValue("enabled")) != 0, "error", err)
 		http.Error(w, "Unable to save authentication settings", http.StatusInternalServerError)
 		return
 	}
@@ -85,6 +89,8 @@ func (c *AuthSettingsController) updateOIDC(w http.ResponseWriter, r *http.Reque
 
 // updateLDAP handles the POST request to update the LDAP authentication settings.
 func (c *AuthSettingsController) updateLDAP(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	enabled := checkboxToInt64(r.FormValue("enabled")) != 0
 	portStr := strings.TrimSpace(r.FormValue("port"))
 
@@ -92,19 +98,19 @@ func (c *AuthSettingsController) updateLDAP(w http.ResponseWriter, r *http.Reque
 	if portStr != "" {
 		p, err := parseLDAPPort(portStr)
 		if err != nil {
-			middleware.GetLoggerFromContext(r.Context()).Warn("ldap settings validation failed", "port", portStr, "error", err)
+			logger.Warn("ldap settings validation failed", "port", portStr, "error", err)
 			http.Error(w, "LDAP port must be between 1 and 65535", http.StatusBadRequest)
 			return
 		}
 		port = &p
 	} else if enabled {
-		middleware.GetLoggerFromContext(r.Context()).Warn("ldap settings validation failed", "reason", "port required when enabled")
+		logger.Warn("ldap settings validation failed", "reason", "port required when enabled")
 		http.Error(w, "LDAP port is required when LDAP is enabled", http.StatusBadRequest)
 		return
 	}
 
 	if err := c.updateLDAPConfig(r, port); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("ldap settings update failed", "enabled", enabled, "error", err)
+		logger.Error("ldap settings update failed", "enabled", enabled, "error", err)
 		http.Error(w, "Unable to save authentication settings", http.StatusInternalServerError)
 		return
 	}
@@ -115,6 +121,8 @@ func (c *AuthSettingsController) updateLDAP(w http.ResponseWriter, r *http.Reque
 
 // auditAuthSettingsUpdate creates an audit log entry for changes to the authentication settings.
 func (c *AuthSettingsController) auditAuthSettingsUpdate(r *http.Request, action string) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, _ := middleware.GetAuthFromContext(r.Context())
 
 	if err := c.store.CreateAuditLog(r.Context(), db.CreateAuditLogParams{
@@ -123,7 +131,7 @@ func (c *AuthSettingsController) auditAuthSettingsUpdate(r *http.Request, action
 		TargetType:  stringPointer("auth_settings"),
 		TargetID:    stringPointer("1"),
 	}); err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("auth settings audit log creation failed", "action", action, "error", err)
+		logger.Error("auth settings audit log creation failed", "action", action, "error", err)
 	}
 }
 

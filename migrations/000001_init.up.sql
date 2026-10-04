@@ -29,14 +29,21 @@ INSERT INTO roles (name) VALUES ('admin'), ('approver'), ('requester'), ('viewer
 -- Seed the local admin user. id=1 is deterministic here since this is the
 -- first row ever inserted into users. password_hash starts NULL and is
 -- set on first boot by EnsureLocalAdmin from ADMIN_PASSWORD -- everything
--- else (the user row, the admin role assignment) is seeded here instead
--- of at runtime, so there's no window where the user exists without its
--- role (this whole migration runs in one transaction).
+-- else (the user row, the role assignments) is seeded here instead of at
+-- runtime, so there's no window where the user exists without its roles
+-- (this whole migration runs in one transaction).
 INSERT INTO users (id, display_name, auth_source, password_hash, active)
 VALUES (1, 'administrator', 'local', NULL, 1);
 
+-- Local admin gets ALL roles (admin, approver, requester, viewer), not
+-- just 'admin' -- roles are additive, not hierarchical (see RBAC in
+-- copilot-instructions.md), so 'admin' alone would NOT let this account
+-- submit requests or act on the approval queue. The single local account
+-- is meant to be able to do everything out of the box; a self-hoster who
+-- wants narrower local-admin access can revoke roles via /admin/users
+-- after first boot.
 INSERT INTO user_roles (user_id, role_id)
-SELECT 1, id FROM roles WHERE name = 'admin';
+SELECT 1, id FROM roles;
 
 -- scs sessions table (sqlite3store expected schema)
 CREATE TABLE sessions (
