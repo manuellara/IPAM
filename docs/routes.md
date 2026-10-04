@@ -172,10 +172,14 @@ with an API key can consume it.
 
 ## Local Admin Bootstrap
 
-- The local admin user (`id = 1`, `administrator`) and its `admin` role
-  assignment are seeded directly in the migration, not created at
-  runtime — this makes the whole thing atomic (one migration transaction)
-  and means `EnsureLocalAdmin` only ever reconciles the password hash,
+- The local admin user (`id = 1`, `administrator`) and **all four role
+  assignments** (`admin`, `approver`, `requester`, `viewer` — not just
+  `admin`) are seeded directly in the migration, not created at
+  runtime. Roles are additive, not hierarchical, so `admin` alone would
+  not let this account submit requests or act on the approval queue; the
+  single local account is meant to do everything out of the box. This
+  makes the whole thing atomic (one migration transaction) and means
+  `EnsureLocalAdmin` only ever reconciles the password hash,
   never creates the user or assigns the role.
 - `password_hash` starts `NULL` in the seed and is set on first boot from
   `ADMIN_PASSWORD`.

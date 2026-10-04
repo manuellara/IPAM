@@ -36,8 +36,9 @@ applyTo: "migrations/**"
 - Timestamps are stored as `TEXT` via `datetime('now')` — stay consistent
   with this rather than introducing a different time representation.
 - Booleans are `INTEGER` (`0`/`1`) — SQLite has no native boolean type.
-- The local admin user (`id = 1`, `administrator`) and its `admin` role
-  assignment are seeded directly in the initial migration, not created at
-  runtime — this makes the whole thing atomic within the migration's
-  transaction. `password_hash` starts `NULL` in the seed and is set on
-  first boot by `EnsureLocalAdmin` from `ADMIN_PASSWORD`.
+- The local admin user (`id = 1`, `administrator`) and **all four role
+  assignments** (`admin`, `approver`, `requester`, `viewer`) are seeded
+  directly in the initial migration, not created at runtime — this makes
+  the whole thing atomic within the migration's transaction.
+  `password_hash` starts `NULL` in the seed and is set on first boot by
+  `EnsureLocalAdmin` from `ADMIN_PASSWORD`.

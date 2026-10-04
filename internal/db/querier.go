@@ -23,6 +23,7 @@ type Querier interface {
 	// "Reference: naming scheme queries (IPAM-16/17)" section.
 	CreateNamingSchemeTokenValue(ctx context.Context, arg CreateNamingSchemeTokenValueParams) (NamingSchemeTokenValue, error)
 	CreateOIDCUser(ctx context.Context, arg CreateOIDCUserParams) (User, error)
+	CreateRequest(ctx context.Context, arg CreateRequestParams) (Request, error)
 	CreateSiteEnvSubnetMap(ctx context.Context, arg CreateSiteEnvSubnetMapParams) (SiteEnvSubnetMap, error)
 	CreateSubnet(ctx context.Context, arg CreateSubnetParams) (Subnet, error)
 	CreateSubnetReservedIP(ctx context.Context, arg CreateSubnetReservedIPParams) (SubnetReservedIp, error)
@@ -33,6 +34,8 @@ type Querier interface {
 	// Scoped by subnet_id too, not just id -- belt-and-suspenders against a
 	// crafted delete for a row under a different subnet.
 	DeleteSubnetReservedIP(ctx context.Context, arg DeleteSubnetReservedIPParams) error
+	// Request submission requires an active mapping for this scheme/site/env.
+	GetActiveSiteEnvSubnetMap(ctx context.Context, arg GetActiveSiteEnvSubnetMapParams) (int64, error)
 	GetLDAPConfig(ctx context.Context) (LdapConfig, error)
 	GetLDAPUser(ctx context.Context, ldapDn *string) (User, error)
 	GetLocalAdminUser(ctx context.Context) (User, error)

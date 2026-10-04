@@ -39,6 +39,14 @@ ORDER BY scheme_id, token, code;
 -- name: GetSiteEnvSubnetMap :one
 SELECT * FROM site_env_subnet_map WHERE id = sqlc.arg(id);
 
+-- name: GetActiveSiteEnvSubnetMap :one
+-- Request submission requires an active mapping for this scheme/site/env.
+SELECT subnet_id FROM site_env_subnet_map
+WHERE site_code = sqlc.arg(site_code)
+    AND env_code = sqlc.arg(env_code)
+    AND naming_scheme_id = sqlc.arg(naming_scheme_id)
+    AND active = 1;
+
 -- name: CreateSiteEnvSubnetMap :one
 INSERT INTO site_env_subnet_map (site_code, env_code, naming_scheme_id, subnet_id, active)
 VALUES (sqlc.arg(site_code), sqlc.arg(env_code), sqlc.arg(naming_scheme_id), sqlc.arg(subnet_id), 1)

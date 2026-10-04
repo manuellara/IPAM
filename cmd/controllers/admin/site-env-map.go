@@ -39,11 +39,13 @@ func (c *SiteEnvMapController) RegisterSiteEnvMapRoutes(mux *http.ServeMux, mw m
 
 // list handles the HTTP request for listing all site-env-subnet mappings.
 func (c *SiteEnvMapController) list(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, _ := middleware.GetAuthFromContext(r.Context())
 
 	rows, err := c.store.ListSiteEnvSubnetMapWithDetails(r.Context())
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("site+env map list failed", "error", err)
+		logger.Error("site+env map list failed", "error", err)
 		http.Error(w, "Unable to load mappings", http.StatusInternalServerError)
 		return
 	}
@@ -60,7 +62,7 @@ func (c *SiteEnvMapController) list(w http.ResponseWriter, r *http.Request) {
 			util := subnets.ComputeUtilization(prefix, int(row.ReservedCount), int(row.UsedCount))
 			free = util.Free
 		} else {
-			middleware.GetLoggerFromContext(r.Context()).Warn("site+env map: unparseable subnet CIDR", "cidr", row.SubnetCidr, "error", err)
+			logger.Warn("site+env map: unparseable subnet CIDR", "cidr", row.SubnetCidr, "error", err)
 		}
 
 		viewRows = append(viewRows, admin.SiteEnvMapRow{
@@ -85,11 +87,13 @@ func (c *SiteEnvMapController) newForm(w http.ResponseWriter, r *http.Request) {
 
 // renderNewForm renders the form for creating a new site-env-subnet mapping, including any error message.
 func (c *SiteEnvMapController) renderNewForm(w http.ResponseWriter, r *http.Request, errMsg string) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, _ := middleware.GetAuthFromContext(r.Context())
 
 	schemes, subnets, tokensJSON, err := c.formOptions(r)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("site+env map form options failed", "error", err)
+		logger.Error("site+env map form options failed", "error", err)
 		http.Error(w, "Unable to load form", http.StatusInternalServerError)
 		return
 	}
@@ -100,9 +104,11 @@ func (c *SiteEnvMapController) renderNewForm(w http.ResponseWriter, r *http.Requ
 
 // editForm handles the HTTP request for displaying the form to edit an existing site-env-subnet mapping.
 func (c *SiteEnvMapController) editForm(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("invalid site+env map id for edit", "id", r.PathValue("id"), "error", err)
+		logger.Warn("invalid site+env map id for edit", "id", r.PathValue("id"), "error", err)
 		http.NotFound(w, r)
 		return
 	}
@@ -111,23 +117,25 @@ func (c *SiteEnvMapController) editForm(w http.ResponseWriter, r *http.Request) 
 
 // renderEditForm renders the form for editing an existing site-env-subnet mapping, including any error message.
 func (c *SiteEnvMapController) renderEditForm(w http.ResponseWriter, r *http.Request, id int64, errMsg string) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	principal, _ := middleware.GetAuthFromContext(r.Context())
 
 	m, err := c.store.GetSiteEnvSubnetMap(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			middleware.GetLoggerFromContext(r.Context()).Warn("site+env map not found", "id", id, "error", err)
+			logger.Warn("site+env map not found", "id", id, "error", err)
 			http.NotFound(w, r)
 			return
 		}
-		middleware.GetLoggerFromContext(r.Context()).Error("site+env map lookup failed", "id", id, "error", err)
+		logger.Error("site+env map lookup failed", "id", id, "error", err)
 		http.Error(w, "Unable to load mapping", http.StatusInternalServerError)
 		return
 	}
 
 	schemes, subnets, tokensJSON, err := c.formOptions(r)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Error("site+env map form options failed", "error", err)
+		logger.Error("site+env map form options failed", "error", err)
 		http.Error(w, "Unable to load form", http.StatusInternalServerError)
 		return
 	}
@@ -147,9 +155,11 @@ func (c *SiteEnvMapController) renderEditForm(w http.ResponseWriter, r *http.Req
 
 // create handles the HTTP request for creating a new site-env-subnet mapping.
 func (c *SiteEnvMapController) create(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	siteCode, envCode, schemeID, subnetID, _, err := parseSiteEnvMapForm(r)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("site+env map create validation failed", "error", err)
+		logger.Warn("site+env map create validation failed", "error", err)
 		c.renderNewForm(w, r, err.Error())
 		return
 	}
@@ -162,11 +172,11 @@ func (c *SiteEnvMapController) create(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if isUniqueConstraintErr(err) {
-			middleware.GetLoggerFromContext(r.Context()).Warn("site+env map already exists", "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "error", err)
+			logger.Warn("site+env map already exists", "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "error", err)
 			c.renderNewForm(w, r, "A mapping for this scheme + site + env already exists.")
 			return
 		}
-		middleware.GetLoggerFromContext(r.Context()).Error("site+env map create failed", "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "subnet_id", subnetID, "error", err)
+		logger.Error("site+env map create failed", "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "subnet_id", subnetID, "error", err)
 		http.Error(w, "Unable to save mapping", http.StatusInternalServerError)
 		return
 	}
@@ -176,16 +186,18 @@ func (c *SiteEnvMapController) create(w http.ResponseWriter, r *http.Request) {
 
 // update handles the HTTP request for updating an existing site-env-subnet mapping.
 func (c *SiteEnvMapController) update(w http.ResponseWriter, r *http.Request) {
+	logger := middleware.GetLoggerFromContext(r.Context())
+
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("invalid site+env map id for update", "id", r.PathValue("id"), "error", err)
+		logger.Warn("invalid site+env map id for update", "id", r.PathValue("id"), "error", err)
 		http.NotFound(w, r)
 		return
 	}
 
 	siteCode, envCode, schemeID, subnetID, active, err := parseSiteEnvMapForm(r)
 	if err != nil {
-		middleware.GetLoggerFromContext(r.Context()).Warn("site+env map update validation failed", "id", id, "error", err)
+		logger.Warn("site+env map update validation failed", "id", id, "error", err)
 		c.renderEditForm(w, r, id, err.Error())
 		return
 	}
@@ -200,11 +212,11 @@ func (c *SiteEnvMapController) update(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if isUniqueConstraintErr(err) {
-			middleware.GetLoggerFromContext(r.Context()).Warn("site+env map already exists", "id", id, "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "error", err)
+			logger.Warn("site+env map already exists", "id", id, "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "error", err)
 			c.renderEditForm(w, r, id, "A mapping for this scheme + site + env already exists.")
 			return
 		}
-		middleware.GetLoggerFromContext(r.Context()).Error("site+env map update failed", "id", id, "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "subnet_id", subnetID, "error", err)
+		logger.Error("site+env map update failed", "id", id, "site_code", siteCode, "env_code", envCode, "scheme_id", schemeID, "subnet_id", subnetID, "error", err)
 		http.Error(w, "Unable to save mapping", http.StatusInternalServerError)
 		return
 	}

@@ -579,7 +579,12 @@ repeatedly failing their login on purpose).
   (request approval, admin-direct, CSV import) — every path must set it.
 - Don't create a "create local admin on first boot" code path —
   `EnsureLocalAdmin` only ever reconciles the password hash; the user row
-  and its role are seeded in the migration, not created at runtime.
+  and all four of its role assignments are seeded in the migration, not
+  created at runtime.
+- Don't seed the local admin with only the `admin` role — it gets all
+  four (`admin`, `approver`, `requester`, `viewer`). Roles are additive,
+  not hierarchical, so `admin` alone wouldn't let it submit requests or
+  act on the approval queue.
 - Don't register a route at a bare `/` on the `ServeMux` — it's the
   catch-all pattern. The dashboard is `GET /dashboard`.
 - Don't apply the 15-character NetBIOS length constraint (or any part of
